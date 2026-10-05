@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
-  <title>JMJ Ads — মাস্টার এডমিন কন্ট্রোল প্যানেল (Standalone)</title>
+  <title>JMJ Ads — মাস্টার এডমিন কন্ট্রোল প্যানেল</title>
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
 
   <!-- Firebase Compat SDK (Connected to Real Database) -->
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
@@ -17,9 +17,9 @@
   <style>
     :root {
       --bg: #0b0613;
-      --card: rgba(27, 16, 44, 0.86);
-      --card2: rgba(38, 22, 62, 0.75);
-      --line: rgba(245, 158, 11, 0.24);
+      --card: rgba(27, 16, 44, 0.88);
+      --card2: rgba(38, 22, 62, 0.78);
+      --line: rgba(245, 158, 11, 0.25);
       --text: #fdf8f5;
       --muted: #bca9d1;
       --gold: #f59e0b;
@@ -46,66 +46,41 @@
     }
 
     .container {
-      max-width: 920px;
+      max-width: 960px;
       margin: 0 auto;
       padding: 18px 16px;
     }
 
-    /* Header & Logo */
     .header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-wrap: wrap;
       gap: 14px;
-      padding: 18px 22px;
-      border-radius: 24px;
+      padding: 16px 20px;
+      border-radius: 22px;
       background: linear-gradient(135deg, #27133e 0%, #170b28 55%, #2b1129 100%);
-      border: 1px solid rgba(251, 191, 36, 0.32);
+      border: 1px solid rgba(251, 191, 36, 0.35);
       box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
       margin-bottom: 18px;
     }
 
-    .brand-wrap {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .emblem {
-      width: 48px;
-      height: 48px;
-      border-radius: 15px;
-      background: linear-gradient(135deg, #fbbf24, #f59e0b, #e11d48);
-      padding: 2px;
-      box-shadow: 0 8px 24px rgba(245, 158, 11, 0.3);
-    }
-
-    .emblem-inner {
-      width: 100%;
-      height: 100%;
-      background: #140923;
-      border-radius: 13px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
     .brand-title {
-      font-family: 'Hind Siliguri', sans-serif;
-      font-size: 19px;
+      font-family: 'Plus Jakarta Sans', 'Hind Siliguri', sans-serif;
+      font-size: 20px;
       font-weight: 800;
       color: #fff;
       letter-spacing: -0.02em;
     }
 
     .brand-badge {
-      font-size: 12px;
+      font-size: 11px;
       padding: 3px 9px;
       border-radius: 8px;
       background: linear-gradient(90deg, #f59e0b, #e11d48);
       color: #fff;
       text-transform: uppercase;
+      margin-left: 6px;
     }
 
     .brand-sub {
@@ -114,10 +89,9 @@
       margin-top: 2px;
     }
 
-    /* Tabs */
     .tabs {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 8px;
       background: rgba(17, 9, 31, 0.85);
       padding: 8px;
@@ -134,7 +108,7 @@
       color: var(--muted);
       font-family: inherit;
       font-weight: 700;
-      font-size: 13px;
+      font-size: 12.5px;
       cursor: pointer;
       transition: 0.2s;
     }
@@ -158,18 +132,20 @@
       backdrop-filter: blur(20px);
       border: 1px solid var(--line);
       border-radius: 24px;
-      padding: 22px;
+      padding: 20px;
       margin-bottom: 16px;
       box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
     }
 
     .card h3 {
-      font-size: 17px;
+      font-size: 16px;
       margin-bottom: 14px;
       color: var(--gold-light);
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
     }
 
     .grid-2 {
@@ -178,8 +154,14 @@
       gap: 12px;
     }
 
-    @media (max-width: 640px) {
-      .grid-2 {
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width: 680px) {
+      .grid-2, .grid-3 {
         grid-template-columns: 1fr;
       }
       .tabs {
@@ -213,7 +195,7 @@
 
     .btn-primary {
       width: 100%;
-      padding: 14px;
+      padding: 13px;
       border-radius: 15px;
       border: 0;
       background: linear-gradient(135deg, var(--gold), var(--rose), var(--violet));
@@ -245,9 +227,9 @@
     }
 
     .btn-rose {
-      background: rgba(225, 29, 72, 0.2);
+      background: rgba(225, 29, 72, 0.22);
       color: #fda4af;
-      border-color: rgba(225, 29, 72, 0.4);
+      border-color: rgba(225, 29, 72, 0.45);
     }
 
     .item-row {
@@ -258,7 +240,7 @@
       padding: 14px;
       border-radius: 16px;
       background: var(--card2);
-      border: 1px solid rgba(245, 158, 11, 0.16);
+      border: 1px solid rgba(245, 158, 11, 0.18);
       margin-bottom: 10px;
       flex-wrap: wrap;
     }
@@ -267,25 +249,44 @@
       font-family: 'JetBrains Mono', monospace;
     }
 
+    /* Top Toast with 3s shrinking bottom line */
     .toast {
       position: fixed;
-      bottom: 24px;
+      top: 16px;
       left: 50%;
       transform: translateX(-50%);
-      background: #1b0d30;
-      border: 1px solid var(--gold);
-      color: #fde68a;
-      padding: 12px 20px;
-      border-radius: 14px;
+      width: 92%;
+      max-width: 440px;
+      background: #22103b;
+      border: 2px solid rgba(251, 191, 36, 0.6);
+      color: #fef3c7;
+      border-radius: 16px;
       font-size: 13px;
       font-weight: 700;
-      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.8);
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.8);
       display: none;
-      z-index: 999;
+      overflow: hidden;
+      z-index: 9999;
     }
 
     .toast.show {
       display: block;
+    }
+
+    .toast-body {
+      padding: 12px 16px;
+    }
+
+    .toast-line {
+      height: 4px;
+      background: linear-gradient(90deg, #fbbf24, #e11d48, #9333ea);
+      width: 100%;
+      animation: shrinkBar 3s linear forwards;
+    }
+
+    @keyframes shrinkBar {
+      from { width: 100%; }
+      to { width: 0%; }
     }
   </style>
 </head>
@@ -293,32 +294,205 @@
   <div class="container">
     <!-- HEADER -->
     <header class="header">
-      <div class="brand-wrap">
-        <div>
-          <div class="brand-title">
-            JMJ <span style="color:#f59e0b;">Ads</span> <span class="brand-badge">Admin</span>
-          </div>
-          <div class="brand-sub">স্বতন্ত্র এডমিন কন্ট্রোল প্যানেল · Firebase Live Sync</div>
+      <div>
+        <div class="brand-title">
+          JMJ <span style="color:#f59e0b;">Ads</span><span class="brand-badge">Master Admin</span>
         </div>
+        <div class="brand-sub">স্বতন্ত্র ফুল কন্ট্রোল এডমিন প্যানেল · Firebase Live Sync</div>
       </div>
 
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <a href="/" class="btn-sm btn-gold" style="text-decoration:none;">ইউজার অ্যাপ দেখুন ↗</a>
-        <button class="btn-sm" onclick="downloadUserBloggerHtml()">📥 User HTML (Blogger)</button>
-        <button class="btn-sm" onclick="downloadAdminFile()">📥 Admin HTML</button>
+        <a href="/" class="btn-sm btn-gold" style="text-decoration:none;">ইউজার অ্যাপ ↗</a>
+        <button class="btn-sm" onclick="downloadAdminFile()">📥 Admin HTML ডাউনলোড</button>
       </div>
     </header>
 
     <!-- NAVIGATION TABS -->
     <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('tasks', this)">১. টাস্ক কন্ট্রোল (Add/Edit)</button>
-      <button class="tab-btn" onclick="switchTab('settings', this)">২. বট লিংক ও মনিট্যাগ রেট</button>
-      <button class="tab-btn" onclick="switchTab('withdrawals', this)">৩. পেমেন্ট রিকোয়েস্ট</button>
-      <button class="tab-btn" onclick="switchTab('users', this)">৪. ইউজার ও প্রোমো কোড</button>
+      <button class="tab-btn active" onclick="switchTab('settings', this)">১. সব সেটিংস ও কন্ট্রোল</button>
+      <button class="tab-btn" onclick="switchTab('promos', this)">২. প্রোমো কোড রিলিজ</button>
+      <button class="tab-btn" onclick="switchTab('tasks', this)">৩. টাস্ক কন্ট্রোল</button>
+      <button class="tab-btn" onclick="switchTab('withdrawals', this)">৪. পেমেন্ট রিকোয়েস্ট</button>
+      <button class="tab-btn" onclick="switchTab('users', this)">৫. ইউজার ও রেফার কন্ট্রোল</button>
     </div>
 
-    <!-- TAB 1: REAL TASK MANAGEMENT -->
-    <section id="tab-tasks" class="panel active">
+    <!-- TAB 1: ALL SETTINGS & FULL CONTROL -->
+    <section id="tab-settings" class="panel active">
+      <div class="card">
+        <h3>⚙️ সাইট, অফিশিয়াল চ্যানেল (@jmjads), ২ ঘণ্টার অ্যাড স্লট, রেফার ও গিভয়ে কন্ট্রোল</h3>
+        <form onsubmit="saveGlobalSettings(event)">
+          <div class="grid-2">
+            <div>
+              <label>সাইটের নাম (Brand Name)</label>
+              <input type="text" id="cfgSiteName" value="JMJ Ads" required />
+            </div>
+
+            <div>
+              <label>ট্যাগলাইন (Tagline)</label>
+              <input type="text" id="cfgTagline" value="প্রিমিয়াম টেলিগ্রাম আর্নিং নেটওয়ার্ক" />
+            </div>
+
+            <div>
+              <label>অফিশিয়াল চ্যানেল লিংক (উপরে প্রদর্শিত হবে)</label>
+              <input type="url" id="cfgOfficialUrl" value="https://t.me/jmjads" required />
+            </div>
+
+            <div>
+              <label>অফিশিয়াল চ্যানেল ইউজারনেম (বট ভেরিফাইয়ের জন্য)</label>
+              <input type="text" id="cfgOfficialUser" value="@jmjads" required />
+            </div>
+
+            <div>
+              <label>অফিশিয়াল চ্যানেল সাবস্ক্রাইব বোনাস (BDT ৳)</label>
+              <input type="number" id="cfgOfficialReward" value="30" required />
+            </div>
+
+            <div>
+              <label>Telegram Bot Token (সাবস্ক্রাইব না করলে অ্যালার্ট দেওয়ার জন্য)</label>
+              <input type="text" id="cfgBotToken" placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ" />
+            </div>
+
+            <div>
+              <label>Monetag Zone ID</label>
+              <input type="text" id="cfgMonetagZone" value="11460709" required />
+            </div>
+
+            <div>
+              <label>প্রতি বিজ্ঞাপনে রিওয়ার্ড (BDT ৳)</label>
+              <input type="number" id="cfgAdReward" value="25" required />
+            </div>
+
+            <div>
+              <label>প্রতি স্লটে কয়টি অ্যাড দেখা যাবে? (যেমন: ১০টি)</label>
+              <input type="number" id="cfgAdsPerBatch" value="10" required />
+            </div>
+
+            <div>
+              <label>কত ঘণ্টা পর পর অ্যাড স্লট আনলক হবে? (যেমন: ২ ঘণ্টা)</label>
+              <input type="number" id="cfgBatchHours" value="2" required />
+            </div>
+
+            <div>
+              <label>প্রতি অ্যাডের মাঝে বিরতি (সেকেন্ড)</label>
+              <input type="number" id="cfgAdCooldown" value="5" required />
+            </div>
+
+            <div>
+              <label>প্রতি রেফারেল বোনাস — যে রেফার করবে (BDT ৳)</label>
+              <input type="number" id="cfgRefBonus" value="50" required />
+            </div>
+
+            <div>
+              <label>রেফার কোড বসালে নতুন ইউজারের বোনাস (BDT ৳)</label>
+              <input type="number" id="cfgRefJoinBonus" value="20" required />
+            </div>
+
+            <div>
+              <label>ওয়েলকাম বোনাস (BDT ৳)</label>
+              <input type="number" id="cfgWelcomeBonus" value="25" required />
+            </div>
+
+            <div>
+              <label>মিনি অ্যাপ ওয়েব হোস্ট লিংক (ডিরেক্ট রেফারেল লিংকের জন্য)</label>
+              <input type="url" id="cfgWebHostUrl" placeholder="খালি রাখলে অটোমেটিক বর্তমান সাইটের লিংক নিবে" />
+            </div>
+
+            <div>
+              <label>টেলিগ্রাম বট ইউজারনেম (ঐচ্ছিক - যেমন: JMJAdsBot)</label>
+              <input type="text" id="cfgBotUsername" placeholder="JMJAdsBot" />
+            </div>
+
+            <div>
+              <label>টেলিগ্রাম মিনি অ্যাপ Short Name (ঐচ্ছিক - যেমন: app)</label>
+              <input type="text" id="cfgMiniAppShort" placeholder="app (দিলেন t.me/Bot/app?startapp=ref_ID তৈরি হবে)" />
+            </div>
+
+            <div>
+              <label>ন্যূনতম উত্তোলন (Min Withdraw BDT ৳)</label>
+              <input type="number" id="cfgMinWithdraw" value="1000" required />
+            </div>
+
+            <div>
+              <label>উত্তোলনের জন্য প্রয়োজনীয় রেফারেল সংখ্যা</label>
+              <input type="number" id="cfgReqRefs" value="18" required />
+            </div>
+
+            <div>
+              <label>রেফার গিভয়ে পুরস্কার (Prize Pool BDT ৳)</label>
+              <input type="number" id="cfgGiveawayPool" value="30000" required />
+            </div>
+
+            <div>
+              <label>গিভয়ে বাকি দিন সংখ্যা</label>
+              <input type="number" id="cfgGiveawayDays" value="10" required />
+            </div>
+
+            <div>
+              <label>গিভয়ে সংক্ষিপ্ত নিয়ম বার্তা (টপ ১০ রেফার)</label>
+              <input type="text" id="cfgGiveawayRuleText" value="সবথেকে বেশি রেফার করে টপ ১০-এ থাকলেই পাবেন এই গিভয়ে পুরস্কার!" />
+            </div>
+
+            <div>
+              <label>সাপোর্ট টেলিগ্রাম ইউজারনেম</label>
+              <input type="text" id="cfgSupportTg" value="@jmjads" />
+            </div>
+
+            <div>
+              <label>টিউটোরিয়াল / গাইডলাইন লিংক</label>
+              <input type="url" id="cfgTutorialUrl" value="https://t.me/jmjads" />
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary">💾 সকল সেটিংস সাথে সাথে সেভ ও লাইভ করুন</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- TAB 2: PROMO CODE RELEASE & ACTIVE/INACTIVE CONTROL -->
+    <section id="tab-promos" class="panel">
+      <div class="card">
+        <h3>
+          <span id="promoFormTitle">🎁 নতুন প্রোমো কোড রিলিজ করুন</span>
+          <button id="cancelPromoEditBtn" class="btn-sm btn-rose" style="display:none;" onclick="resetPromoForm()">বাতিল ✕</button>
+        </h3>
+        <form id="promoForm" onsubmit="savePromoCode(event)">
+          <div class="grid-2">
+            <div>
+              <label>প্রোমো কোড নাম (যেমন: JMJ100, EID50)</label>
+              <input type="text" id="pCode" placeholder="JMJ100" required style="text-transform:uppercase;" />
+            </div>
+            <div>
+              <label>কত টাকা বোনাস / অ্যামাউন্ট (BDT ৳)</label>
+              <input type="number" id="pReward" min="1" value="50" required />
+            </div>
+            <div>
+              <label>রিওয়ার্ড বিবরণ বা নাম (যেমন: অফিশিয়াল চ্যানেল গিফট)</label>
+              <input type="text" id="pRewardTitle" placeholder="অফিশিয়াল চ্যানেল গিফট বোনাস" />
+            </div>
+            <div>
+              <label>সর্বোচ্চ কতজন ক্লেইম করতে পারবে? (Max Uses)</label>
+              <input type="number" id="pMax" min="1" value="100" required />
+            </div>
+            <div>
+              <label>স্ট্যাটাস (Active / Inactive)</label>
+              <select id="pActive">
+                <option value="true">Active (চালু — ইউজাররা ক্লেইম করতে পারবে)</option>
+                <option value="false">Inactive (বন্ধ — কেউ ক্লেইম করতে পারবে না)</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn-primary" id="savePromoBtn">🚀 প্রোমো কোড রিলিজ / সেভ করুন</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>📋 রিলিজকৃত সকল প্রোমো কোড (<span id="promoCount">0</span>)</h3>
+        <div id="promosContainer">লোড হচ্ছে...</div>
+      </div>
+    </section>
+
+    <!-- TAB 3: REAL TASK MANAGEMENT -->
+    <section id="tab-tasks" class="panel">
       <div class="card">
         <h3>
           <span id="formTitle">➕ নতুন রিয়েল টাস্ক যুক্ত করুন</span>
@@ -360,8 +534,8 @@
             </div>
 
             <div>
-              <label>রিওয়ার্ড পয়েন্ট / টাকা (BDT ৳)</label>
-              <input type="number" id="tReward" min="1" value="50" required />
+              <label>রিওয়ার্ড টাকা (BDT ৳)</label>
+              <input type="number" id="tReward" min="1" value="30" required />
             </div>
 
             <div>
@@ -371,12 +545,12 @@
 
             <div>
               <label>টাস্কের রিয়েল লিংক (Target URL)</label>
-              <input type="url" id="tUrl" placeholder="https://t.me/... বা https://youtube.com/..." required />
+              <input type="url" id="tUrl" placeholder="https://t.me/jmjads" required />
             </div>
 
             <div id="tgUsernameWrap">
               <label>টেলিগ্রাম চ্যানেল ইউজারনেম (বট চেকের জন্য)</label>
-              <input type="text" id="tChannel" placeholder="@YourChannelUsername" />
+              <input type="text" id="tChannel" placeholder="@jmjads" />
             </div>
 
             <div>
@@ -388,7 +562,7 @@
             </div>
 
             <div style="display:flex;align-items:center;gap:8px;padding-top:22px;">
-              <input type="checkbox" id="tReqAd" style="width:18px;height:18px;" checked />
+              <input type="checkbox" id="tReqAd" style="width:18px;height:18px;" />
               <label for="tReqAd" style="margin:0;color:#fff;cursor:pointer;">ক্লেইম করার সময় Monetag Ad দেখাবে</label>
             </div>
           </div>
@@ -403,123 +577,34 @@
       </div>
     </section>
 
-    <!-- TAB 2: BOT URL, MONETAG & RATES -->
-    <section id="tab-settings" class="panel">
-      <div class="card">
-        <h3>⚙️ টেলিগ্রাম বট রেফারেল ইউআরএল, মনিট্যাগ ও রেট সেটিংস</h3>
-        <form onsubmit="saveGlobalSettings(event)">
-          <div class="grid-2">
-            <div>
-              <label>সাইটের নাম (Brand Name)</label>
-              <input type="text" id="cfgSiteName" value="JMJ Ads" required />
-            </div>
-
-            <div>
-              <label>টেলিগ্রাম বট ইউজারনেম বা মিনি অ্যাপ লিংক (রেফারেল তৈরি হবে)</label>
-              <input type="text" id="cfgBotUsername" placeholder="যেমন: TopEarnProBot অথবা https://t.me/YourBot/app" required />
-            </div>
-
-            <div>
-              <label>Telegram Bot Token (চ্যানেল সাবস্ক্রাইব ভেরিফাই করার জন্য)</label>
-              <input type="text" id="cfgBotToken" placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ" />
-            </div>
-
-            <div>
-              <label>Monetag Zone ID</label>
-              <input type="text" id="cfgMonetagZone" value="11460709" required />
-            </div>
-
-            <div>
-              <label>প্রতি বিজ্ঞাপনে রিওয়ার্ড (BDT ৳)</label>
-              <input type="number" id="cfgAdReward" value="25" required />
-            </div>
-
-            <div>
-              <label>দৈনিক সর্বোচ্চ বিজ্ঞাপন লিমিট</label>
-              <input type="number" id="cfgAdLimit" value="20" required />
-            </div>
-
-            <div>
-              <label>প্রতি রেফারেল বোনাস (BDT ৳)</label>
-              <input type="number" id="cfgRefBonus" value="50" required />
-            </div>
-
-            <div>
-              <label>ওয়েলকাম বোনাস (BDT ৳)</label>
-              <input type="number" id="cfgWelcomeBonus" value="25" required />
-            </div>
-
-            <div>
-              <label>ন্যূনতম উত্তোলন (Min Withdraw BDT ৳)</label>
-              <input type="number" id="cfgMinWithdraw" value="1000" required />
-            </div>
-
-            <div>
-              <label>উত্তোলনের জন্য প্রয়োজনীয় রেফারেল সংখ্যা</label>
-              <input type="number" id="cfgReqRefs" value="18" required />
-            </div>
-
-            <div>
-              <label>রেফার গিভয়ে পুরস্কার (Prize Pool BDT ৳)</label>
-              <input type="number" id="cfgGiveawayPool" value="30000" />
-            </div>
-
-            <div>
-              <label>সাপোর্ট টেলিগ্রাম ইউজারনেম</label>
-              <input type="text" id="cfgSupportTg" placeholder="@YourSupportUsername" />
-            </div>
-
-            <div>
-              <label>টিউটোরিয়াল ভিডিও লিংক (YouTube URL)</label>
-              <input type="url" id="cfgTutorialUrl" placeholder="https://youtube.com/..." />
-            </div>
-          </div>
-
-          <button type="submit" class="btn-primary">💾 সকল সেটিংস ডাটাবেসে সেভ করুন</button>
-        </form>
-      </div>
-    </section>
-
-    <!-- TAB 3: WITHDRAWAL REQUESTS -->
+    <!-- TAB 4: WITHDRAWAL REQUESTS -->
     <section id="tab-withdrawals" class="panel">
       <div class="card">
-        <h3>💳 ইউজারদের উত্তোলন (Withdraw) রিকোয়েস্ট</h3>
+        <h3>
+          <span>💳 ইউজারদের উত্তোলন (Withdraw) রিকোয়েস্ট</span>
+          <button class="btn-sm btn-gold" onclick="loadWithdrawals()">🔄 রিফ্রেশ</button>
+        </h3>
         <div id="withdrawalsContainer">লোড হচ্ছে...</div>
       </div>
     </section>
 
-    <!-- TAB 4: USERS & PROMO CODES -->
+    <!-- TAB 5: USERS & REFERRALS FULL CONTROL -->
     <section id="tab-users" class="panel">
       <div class="card">
-        <h3>🎁 নতুন প্রোমো কোড তৈরি করুন</h3>
-        <form onsubmit="createPromoCode(event)" class="grid-2">
-          <div>
-            <label>প্রোমো কোড (যেমন: JMJ100)</label>
-            <input type="text" id="pCode" placeholder="JMJ100" required />
-          </div>
-          <div>
-            <label>বোনাস টাকা (BDT ৳)</label>
-            <input type="number" id="pReward" value="50" required />
-          </div>
-          <div>
-            <label>সর্বোচ্চ কতজন ব্যবহার করতে পারবে?</label>
-            <input type="number" id="pMax" value="100" required />
-          </div>
-          <div style="display:flex;align-items:flex-end;">
-            <button type="submit" class="btn-primary" style="margin:0;">+ প্রোমো কোড যোগ করুন</button>
-          </div>
-        </form>
-        <div id="promosContainer" style="margin-top:16px;"></div>
-      </div>
-
-      <div class="card">
-        <h3>👥 রেজিস্টার্ড ইউজার তালিকা (Top 25)</h3>
+        <h3>
+          <span>👥 রেজিস্টার্ড ইউজার ও রেফার কন্ট্রোল (Top 40)</span>
+          <button class="btn-sm btn-gold" onclick="loadUsers()">🔄 রিফ্রেশ</button>
+        </h3>
         <div id="usersContainer">লোড হচ্ছে...</div>
       </div>
     </section>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <!-- Top Toast Notification with 3s shrinking bottom bar -->
+  <div id="toast" class="toast">
+    <div id="toastMsg" class="toast-body"></div>
+    <div id="toastLine" class="toast-line"></div>
+  </div>
 
   <script>
     // Firebase Initialization
@@ -538,10 +623,17 @@
     const db = firebase.firestore();
 
     let allTasks = [];
+    let allPromos = [];
 
     function showToast(msg) {
       const el = document.getElementById('toast');
-      el.textContent = msg;
+      const msgEl = document.getElementById('toastMsg');
+      const lineEl = document.getElementById('toastLine');
+      msgEl.textContent = msg;
+      el.classList.remove('show');
+      lineEl.style.animation = 'none';
+      void el.offsetWidth;
+      lineEl.style.animation = 'shrinkBar 3s linear forwards';
       el.classList.add('show');
       clearTimeout(window.toastTimer);
       window.toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
@@ -553,11 +645,9 @@
       document.getElementById('tab-' + tabId).classList.add('active');
       btn.classList.add('active');
 
+      if (tabId === 'promos') loadPromos();
       if (tabId === 'withdrawals') loadWithdrawals();
-      if (tabId === 'users') {
-        loadUsers();
-        loadPromos();
-      }
+      if (tabId === 'users') loadUsers();
     }
 
     function toggleTelegramField() {
@@ -565,7 +655,204 @@
       document.getElementById('tgUsernameWrap').style.display = plat === 'telegram' ? 'block' : 'none';
     }
 
-    // 1. REAL-TIME TASKS LISTENER
+    // 1. GLOBAL SETTINGS LISTENER & SAVE
+    db.collection('jmj_settings').doc('global').onSnapshot(doc => {
+      if (!doc.exists) return;
+      const d = doc.data();
+      populateSettingsForm(d);
+      localStorage.setItem('jmj_ads_config_v3', JSON.stringify(d));
+    });
+
+    function populateSettingsForm(d) {
+      if (!d) return;
+      if (d.siteName !== undefined) document.getElementById('cfgSiteName').value = d.siteName;
+      if (d.tagline !== undefined) document.getElementById('cfgTagline').value = d.tagline;
+      if (d.officialChannelUrl !== undefined) document.getElementById('cfgOfficialUrl').value = d.officialChannelUrl;
+      if (d.officialChannelUsername !== undefined) document.getElementById('cfgOfficialUser').value = d.officialChannelUsername;
+      if (d.officialChannelReward !== undefined) document.getElementById('cfgOfficialReward').value = d.officialChannelReward;
+      if (d.telegramBotToken !== undefined) document.getElementById('cfgBotToken').value = d.telegramBotToken;
+      if (d.monetagZoneId !== undefined) document.getElementById('cfgMonetagZone').value = d.monetagZoneId;
+      if (d.adReward !== undefined) document.getElementById('cfgAdReward').value = d.adReward;
+      if (d.adsPerBatchLimit !== undefined) document.getElementById('cfgAdsPerBatch').value = d.adsPerBatchLimit;
+      if (d.adBatchCooldownHours !== undefined) document.getElementById('cfgBatchHours').value = d.adBatchCooldownHours;
+      if (d.adCooldownSeconds !== undefined) document.getElementById('cfgAdCooldown').value = d.adCooldownSeconds;
+      if (d.referralBonus !== undefined) document.getElementById('cfgRefBonus').value = d.referralBonus;
+      if (d.referredJoinBonus !== undefined) document.getElementById('cfgRefJoinBonus').value = d.referredJoinBonus;
+      if (d.welcomeBonus !== undefined) document.getElementById('cfgWelcomeBonus').value = d.welcomeBonus;
+      if (d.webAppHostUrl !== undefined) document.getElementById('cfgWebHostUrl').value = d.webAppHostUrl;
+      if (d.telegramBotUsername !== undefined) document.getElementById('cfgBotUsername').value = d.telegramBotUsername;
+      if (d.telegramMiniAppShortName !== undefined) document.getElementById('cfgMiniAppShort').value = d.telegramMiniAppShortName;
+      if (d.minWithdraw !== undefined) document.getElementById('cfgMinWithdraw').value = d.minWithdraw;
+      if (d.requiredReferralsForWithdraw !== undefined) document.getElementById('cfgReqRefs').value = d.requiredReferralsForWithdraw;
+      if (d.giveawayPrizePool !== undefined) document.getElementById('cfgGiveawayPool').value = d.giveawayPrizePool;
+      if (d.giveawayDaysLeft !== undefined) document.getElementById('cfgGiveawayDays').value = d.giveawayDaysLeft;
+      if (d.giveawayRuleShortText !== undefined) document.getElementById('cfgGiveawayRuleText').value = d.giveawayRuleShortText;
+      if (d.supportTelegram !== undefined) document.getElementById('cfgSupportTg').value = d.supportTelegram;
+      if (d.tutorialVideoUrl !== undefined) document.getElementById('cfgTutorialUrl').value = d.tutorialVideoUrl;
+    }
+
+    async function saveGlobalSettings(e) {
+      e.preventDefault();
+      const zone = document.getElementById('cfgMonetagZone').value.trim();
+      const cfg = {
+        siteName: document.getElementById('cfgSiteName').value.trim(),
+        tagline: document.getElementById('cfgTagline').value.trim(),
+        officialChannelUrl: document.getElementById('cfgOfficialUrl').value.trim() || 'https://t.me/jmjads',
+        officialChannelUsername: document.getElementById('cfgOfficialUser').value.trim() || '@jmjads',
+        officialChannelReward: Number(document.getElementById('cfgOfficialReward').value) || 30,
+        telegramBotToken: document.getElementById('cfgBotToken').value.trim(),
+        monetagZoneId: zone,
+        monetagSdkFunc: 'show_' + zone,
+        adReward: Number(document.getElementById('cfgAdReward').value),
+        adsPerBatchLimit: Number(document.getElementById('cfgAdsPerBatch').value) || 10,
+        adBatchCooldownHours: Number(document.getElementById('cfgBatchHours').value) || 2,
+        adCooldownSeconds: Number(document.getElementById('cfgAdCooldown').value) || 5,
+        referralBonus: Number(document.getElementById('cfgRefBonus').value),
+        referredJoinBonus: Number(document.getElementById('cfgRefJoinBonus').value) || 20,
+        welcomeBonus: Number(document.getElementById('cfgWelcomeBonus').value),
+        webAppHostUrl: document.getElementById('cfgWebHostUrl').value.trim(),
+        telegramBotUsername: document.getElementById('cfgBotUsername').value.trim(),
+        telegramMiniAppShortName: document.getElementById('cfgMiniAppShort').value.trim(),
+        minWithdraw: Number(document.getElementById('cfgMinWithdraw').value),
+        requiredReferralsForWithdraw: Number(document.getElementById('cfgReqRefs').value),
+        giveawayPrizePool: Number(document.getElementById('cfgGiveawayPool').value),
+        giveawayDaysLeft: Number(document.getElementById('cfgGiveawayDays').value) || 10,
+        giveawayRuleShortText: document.getElementById('cfgGiveawayRuleText').value.trim(),
+        supportTelegram: document.getElementById('cfgSupportTg').value.trim(),
+        tutorialVideoUrl: document.getElementById('cfgTutorialUrl').value.trim(),
+      };
+
+      localStorage.setItem('jmj_ads_config_v3', JSON.stringify(cfg));
+      try {
+        await db.collection('jmj_settings').doc('global').set(cfg, { merge: true });
+      } catch {}
+      showToast('✅ সকল সেটিংস ডাটাবেসে সেভ ও লাইভ হয়েছে!');
+    }
+
+    // 2. PROMO CODES FULL MANAGEMENT (Release, Edit, Active/Inactive Toggle, Delete)
+    db.collection('jmj_promos').onSnapshot(snap => {
+      allPromos = [];
+      snap.forEach(doc => allPromos.push(doc.data()));
+      localStorage.setItem('jmj_ads_promos_v3', JSON.stringify(allPromos));
+      renderPromos();
+    }, () => {
+      allPromos = JSON.parse(localStorage.getItem('jmj_ads_promos_v3') || '[]');
+      renderPromos();
+    });
+
+    function loadPromos() {
+      renderPromos();
+    }
+
+    function renderPromos() {
+      const box = document.getElementById('promosContainer');
+      document.getElementById('promoCount').textContent = allPromos.length;
+
+      if (allPromos.length === 0) {
+        box.innerHTML = '<div style="text-align:center;padding:20px;opacity:0.7;">এখনো কোনো প্রোমো কোড রিলিজ করা হয়নি। উপরের ফর্ম থেকে নতুন কোড তৈরি করুন।</div>';
+        return;
+      }
+
+      box.innerHTML = allPromos.map(p => `
+        <div class="item-row" style="opacity:${p.active ? '1' : '0.55'}">
+          <div>
+            <div style="font-weight:800;font-size:15px;" class="mono">
+              🎟️ ${escapeHtml(p.code)}
+              <span style="font-size:11px;padding:2px 8px;border-radius:6px;margin-left:6px;background:${p.active ? 'rgba(245,158,11,0.2)' : 'rgba(225,29,72,0.25)'};color:${p.active ? '#fbbf24' : '#fda4af'};">
+                ${p.active ? 'ACTIVE (চালু)' : 'INACTIVE (বন্ধ)'}
+              </span>
+            </div>
+            <div style="font-size:12px;color:#fbbf24;margin-top:4px;" class="mono">
+              বোনাস: +৳${p.reward} BDT · ব্যবহৃত: ${p.usedCount || 0}/${p.maxUses} বার
+              ${p.rewardTitle ? ' · ' + escapeHtml(p.rewardTitle) : ''}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn-sm ${p.active ? '' : 'btn-gold'}" onclick="togglePromoActive('${escapeHtml(p.code)}', ${!p.active})">
+              ${p.active ? '⏸️ Inactive করুন' : '▶️ Active করুন'}
+            </button>
+            <button class="btn-sm btn-gold" onclick="editPromo('${escapeHtml(p.code)}')">এডিট</button>
+            <button class="btn-sm btn-rose" onclick="deletePromo('${escapeHtml(p.code)}')">ডিলিট</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function savePromoCode(e) {
+      e.preventDefault();
+      const code = document.getElementById('pCode').value.trim().toUpperCase();
+      const reward = Number(document.getElementById('pReward').value);
+      const rewardTitle = document.getElementById('pRewardTitle').value.trim() || 'প্রোমো বোনাস';
+      const maxUses = Number(document.getElementById('pMax').value) || 100;
+      const active = document.getElementById('pActive').value === 'true';
+
+      const existing = allPromos.find(x => x.code === code);
+      const promoObj = {
+        code,
+        reward,
+        rewardTitle,
+        maxUses,
+        usedCount: existing ? (existing.usedCount || 0) : 0,
+        active,
+        createdAt: new Date().toISOString()
+      };
+
+      try {
+        await db.collection('jmj_promos').doc(code).set(promoObj, { merge: true });
+      } catch {
+        const idx = allPromos.findIndex(x => x.code === code);
+        if (idx >= 0) allPromos[idx] = promoObj;
+        else allPromos.unshift(promoObj);
+        localStorage.setItem('jmj_ads_promos_v3', JSON.stringify(allPromos));
+        renderPromos();
+      }
+
+      resetPromoForm();
+      showToast(`🎁 প্রোমো কোড (${code}) সফলভাবে সেভ ও রিলিজ হয়েছে!`);
+    }
+
+    function editPromo(code) {
+      const p = allPromos.find(x => x.code === code);
+      if (!p) return;
+      document.getElementById('pCode').value = p.code;
+      document.getElementById('pReward').value = p.reward;
+      document.getElementById('pRewardTitle').value = p.rewardTitle || '';
+      document.getElementById('pMax').value = p.maxUses;
+      document.getElementById('pActive').value = p.active ? 'true' : 'false';
+      document.getElementById('promoFormTitle').textContent = '✏️ প্রোমো কোড এডিট করুন: ' + p.code;
+      document.getElementById('cancelPromoEditBtn').style.display = 'inline-block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function resetPromoForm() {
+      document.getElementById('promoForm').reset();
+      document.getElementById('promoFormTitle').textContent = '🎁 নতুন প্রোমো কোড রিলিজ করুন';
+      document.getElementById('cancelPromoEditBtn').style.display = 'none';
+    }
+
+    async function togglePromoActive(code, nextActive) {
+      try {
+        await db.collection('jmj_promos').doc(code).update({ active: nextActive });
+      } catch {
+        allPromos = allPromos.map(x => x.code === code ? { ...x, active: nextActive } : x);
+        localStorage.setItem('jmj_ads_promos_v3', JSON.stringify(allPromos));
+        renderPromos();
+      }
+      showToast(nextActive ? `✅ কোড (${code}) Active করা হয়েছে!` : `⏸️ কোড (${code}) Inactive করা হয়েছে!`);
+    }
+
+    async function deletePromo(code) {
+      try {
+        await db.collection('jmj_promos').doc(code).delete();
+      } catch {
+        allPromos = allPromos.filter(x => x.code !== code);
+        localStorage.setItem('jmj_ads_promos_v3', JSON.stringify(allPromos));
+        renderPromos();
+      }
+      showToast(`🗑️ প্রোমো কোড (${code}) ডিলিট করা হয়েছে!`);
+    }
+
+    // 3. REAL-TIME TASKS LISTENER
     db.collection('jmj_tasks').onSnapshot(snap => {
       allTasks = [];
       snap.forEach(doc => {
@@ -574,8 +861,7 @@
       allTasks.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       localStorage.setItem('jmj_ads_tasks_v3', JSON.stringify(allTasks));
       renderTasks();
-    }, err => {
-      console.warn('Firestore tasks fallback:', err);
+    }, () => {
       allTasks = JSON.parse(localStorage.getItem('jmj_ads_tasks_v3') || '[]');
       renderTasks();
     });
@@ -585,7 +871,7 @@
       document.getElementById('taskCount').textContent = allTasks.length;
 
       if (allTasks.length === 0) {
-        box.innerHTML = '<div style="text-align:center;padding:24px;opacity:0.7;">এখনো কোনো টাস্ক যোগ করা হয়নি। উপরের ফর্ম থেকে নতুন টাস্ক যুক্ত করুন।</div>';
+        box.innerHTML = '<div style="text-align:center;padding:24px;opacity:0.7;">এখনো কোনো অতিরিক্ত টাস্ক যোগ করা হয়নি।</div>';
         return;
       }
 
@@ -630,7 +916,7 @@
       const docId = editId || ('task_' + Date.now());
       try {
         await db.collection('jmj_tasks').doc(docId).set(taskObj, { merge: true });
-      } catch (err) {
+      } catch {
         const list = JSON.parse(localStorage.getItem('jmj_ads_tasks_v3') || '[]');
         const idx = list.findIndex(x => x.id === docId);
         if (idx >= 0) list[idx] = { id: docId, ...taskObj };
@@ -657,7 +943,7 @@
       document.getElementById('tUrl').value = t.url;
       document.getElementById('tChannel').value = t.channelUsername || '';
       document.getElementById('tFreq').value = t.frequency || 'once';
-      document.getElementById('tReqAd').checked = t.requireMonetagAd !== false;
+      document.getElementById('tReqAd').checked = Boolean(t.requireMonetagAd);
       toggleTelegramField();
 
       document.getElementById('formTitle').textContent = '✏️ টাস্ক এডিট করুন';
@@ -697,59 +983,7 @@
       showToast('🔄 টাস্ক স্ট্যাটাস পরিবর্তিত হয়েছে!');
     }
 
-    // 2. GLOBAL SETTINGS
-    db.collection('jmj_settings').doc('global').onSnapshot(doc => {
-      if (!doc.exists) return;
-      const d = doc.data();
-      populateSettingsForm(d);
-      localStorage.setItem('jmj_ads_config_v3', JSON.stringify(d));
-    });
-
-    function populateSettingsForm(d) {
-      if (!d) return;
-      if (d.siteName) document.getElementById('cfgSiteName').value = d.siteName;
-      if (d.telegramBotUsername) document.getElementById('cfgBotUsername').value = d.telegramBotUsername;
-      if (d.telegramBotToken !== undefined) document.getElementById('cfgBotToken').value = d.telegramBotToken;
-      if (d.monetagZoneId) document.getElementById('cfgMonetagZone').value = d.monetagZoneId;
-      if (d.adReward !== undefined) document.getElementById('cfgAdReward').value = d.adReward;
-      if (d.dailyAdLimit !== undefined) document.getElementById('cfgAdLimit').value = d.dailyAdLimit;
-      if (d.referralBonus !== undefined) document.getElementById('cfgRefBonus').value = d.referralBonus;
-      if (d.welcomeBonus !== undefined) document.getElementById('cfgWelcomeBonus').value = d.welcomeBonus;
-      if (d.minWithdraw !== undefined) document.getElementById('cfgMinWithdraw').value = d.minWithdraw;
-      if (d.requiredReferralsForWithdraw !== undefined) document.getElementById('cfgReqRefs').value = d.requiredReferralsForWithdraw;
-      if (d.giveawayPrizePool !== undefined) document.getElementById('cfgGiveawayPool').value = d.giveawayPrizePool;
-      if (d.supportTelegram !== undefined) document.getElementById('cfgSupportTg').value = d.supportTelegram;
-      if (d.tutorialVideoUrl !== undefined) document.getElementById('cfgTutorialUrl').value = d.tutorialVideoUrl;
-    }
-
-    async function saveGlobalSettings(e) {
-      e.preventDefault();
-      const zone = document.getElementById('cfgMonetagZone').value.trim();
-      const cfg = {
-        siteName: document.getElementById('cfgSiteName').value.trim(),
-        telegramBotUsername: document.getElementById('cfgBotUsername').value.trim(),
-        telegramBotToken: document.getElementById('cfgBotToken').value.trim(),
-        monetagZoneId: zone,
-        monetagSdkFunc: 'show_' + zone,
-        adReward: Number(document.getElementById('cfgAdReward').value),
-        dailyAdLimit: Number(document.getElementById('cfgAdLimit').value),
-        referralBonus: Number(document.getElementById('cfgRefBonus').value),
-        welcomeBonus: Number(document.getElementById('cfgWelcomeBonus').value),
-        minWithdraw: Number(document.getElementById('cfgMinWithdraw').value),
-        requiredReferralsForWithdraw: Number(document.getElementById('cfgReqRefs').value),
-        giveawayPrizePool: Number(document.getElementById('cfgGiveawayPool').value),
-        supportTelegram: document.getElementById('cfgSupportTg').value.trim(),
-        tutorialVideoUrl: document.getElementById('cfgTutorialUrl').value.trim(),
-      };
-
-      localStorage.setItem('jmj_ads_config_v3', JSON.stringify(cfg));
-      try {
-        await db.collection('jmj_settings').doc('global').set(cfg, { merge: true });
-      } catch {}
-      showToast('✅ সকল সেটিংস ও টেলিগ্রাম রেফারেল কনফিগ সেভ হয়েছে!');
-    }
-
-    // 3. WITHDRAWALS MANAGEMENT
+    // 4. WITHDRAWALS MANAGEMENT
     async function loadWithdrawals() {
       const box = document.getElementById('withdrawalsContainer');
       try {
@@ -790,53 +1024,16 @@
         }
         showToast(status === 'approved' ? '✅ পেমেন্ট সম্পন্ন মার্ক করা হয়েছে!' : '⚠️ রিকোয়েস্ট বাতিল ও রিফান্ড করা হয়েছে!');
         loadWithdrawals();
-      } catch (e) {
+      } catch {
         showToast('❌ আপডেট করতে সমস্যা হয়েছে');
       }
     }
 
-    // 4. USERS & PROMOS
-    async function loadPromos() {
-      const box = document.getElementById('promosContainer');
-      try {
-        const snap = await db.collection('jmj_promos').get();
-        const list = [];
-        snap.forEach(doc => list.push(doc.data()));
-        localStorage.setItem('jmj_ads_promos_v3', JSON.stringify(list));
-        box.innerHTML = list.map(p => `
-          <div class="item-row">
-            <div class="mono"><b>${escapeHtml(p.code)}</b> · +৳${p.reward} BDT · লিমিট: ${p.maxUses}</div>
-            <button class="btn-sm btn-rose" onclick="deletePromo('${p.code}')">ডিলিট</button>
-          </div>
-        `).join('');
-      } catch {}
-    }
-
-    async function createPromoCode(e) {
-      e.preventDefault();
-      const code = document.getElementById('pCode').value.trim().toUpperCase();
-      const reward = Number(document.getElementById('pReward').value);
-      const maxUses = Number(document.getElementById('pMax').value);
-      const promo = { code, reward, maxUses, usedCount: 0, active: true };
-      try {
-        await db.collection('jmj_promos').doc(code).set(promo);
-      } catch {}
-      document.getElementById('pCode').value = '';
-      showToast('🎁 প্রোমো কোড তৈরি হয়েছে!');
-      loadPromos();
-    }
-
-    async function deletePromo(code) {
-      try {
-        await db.collection('jmj_promos').doc(code).delete();
-      } catch {}
-      loadPromos();
-    }
-
+    // 5. USERS & REFERRALS FULL CONTROL
     async function loadUsers() {
       const box = document.getElementById('usersContainer');
       try {
-        const snap = await db.collection('users').limit(25).get();
+        const snap = await db.collection('users').limit(40).get();
         if (snap.empty) {
           box.innerHTML = '<div style="text-align:center;padding:20px;opacity:0.7;">এখনো কোনো ইউজার নেই</div>';
           return;
@@ -846,11 +1043,19 @@
         box.innerHTML = rows.map(u => `
           <div class="item-row">
             <div>
-              <div style="font-weight:700;">${escapeHtml((u.firstName || '') + ' ' + (u.lastName || ''))} <span class="mono" style="font-size:11px;opacity:0.7;">(ID: ${escapeHtml(u.id)})</span></div>
-              <div class="mono" style="font-size:12px;color:#fbbf24;">ব্যালেন্স: ৳${Number(u.balance || 0).toFixed(2)} · রেফার: ${u.referralCount || 0} · আজকের অ্যাড: ${u.todayAdsWatched || u.todayAds || 0}</div>
+              <div style="font-weight:700;">
+                ${escapeHtml((u.firstName || '') + ' ' + (u.lastName || ''))}
+                <span class="mono" style="font-size:11px;opacity:0.75;">(ID: ${escapeHtml(u.id)} · কোড: ${escapeHtml(u.referralCode || '')})</span>
+              </div>
+              <div class="mono" style="font-size:12px;color:#fbbf24;margin-top:3px;">
+                ব্যালেন্স: ৳${Number(u.balance || 0).toFixed(2)} · রেফার: ${u.referralCount || 0} জন · চলতি স্লট অ্যাড: ${u.batchAdsWatched || 0}টি
+              </div>
             </div>
-            <div style="display:flex;gap:6px;">
-              <button class="btn-sm btn-gold" onclick="adjustUserBalance('${u.id}', 100)">+৳১০০ দিন</button>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn-sm btn-gold" onclick="adjustUserBalance('${u.id}', 100)">+৳১০০</button>
+              <button class="btn-sm btn-rose" onclick="adjustUserBalance('${u.id}', -100)">-৳১০০</button>
+              <button class="btn-sm" onclick="adjustUserReferrals('${u.id}', 1)">+১ রেফার</button>
+              <button class="btn-sm" onclick="resetUserAdBatch('${u.id}')">🔄 অ্যাড স্লট রিসেট</button>
             </div>
           </div>
         `).join('');
@@ -861,9 +1066,30 @@
       try {
         await db.collection('users').doc(uid).update({
           balance: firebase.firestore.FieldValue.increment(delta),
-          totalEarned: firebase.firestore.FieldValue.increment(delta)
+          totalEarned: firebase.firestore.FieldValue.increment(delta > 0 ? delta : 0)
         });
         showToast('✅ ইউজারের ব্যালেন্স আপডেট হয়েছে!');
+        loadUsers();
+      } catch {}
+    }
+
+    async function adjustUserReferrals(uid, delta) {
+      try {
+        await db.collection('users').doc(uid).update({
+          referralCount: firebase.firestore.FieldValue.increment(delta)
+        });
+        showToast('✅ ইউজারের রেফার সংখ্যা আপডেট হয়েছে!');
+        loadUsers();
+      } catch {}
+    }
+
+    async function resetUserAdBatch(uid) {
+      try {
+        await db.collection('users').doc(uid).update({
+          batchAdsWatched: 0,
+          batchCycleStartAt: 0
+        });
+        showToast('✅ ইউজারের ২ ঘণ্টার অ্যাড স্লট রিসেট হয়েছে!');
         loadUsers();
       } catch {}
     }
@@ -876,11 +1102,6 @@
       a.download = 'jmj-ads-admin-panel.html';
       a.click();
       showToast('📥 স্বতন্ত্র Admin HTML ফাইল ডাউনলোড হয়েছে!');
-    }
-
-    function downloadUserBloggerHtml() {
-      window.open('/', '_blank');
-      showToast('🌐 মূল ইউজার প্যানেল খোলা হয়েছে!');
     }
 
     function escapeHtml(str) {

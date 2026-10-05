@@ -17,16 +17,16 @@ import {
   Lock,
   Mail,
   MessageCircle,
-  Moon,
   Music2,
   Phone,
   Play,
   Send,
   Share2,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
-  Sun,
   Trophy,
+  UserPlus,
   Users,
   Wallet,
   Youtube,
@@ -45,13 +45,17 @@ import {
 } from './types';
 import {
   DEFAULT_CONFIG,
+  INITIAL_TASKS,
   buildDynamicReferralUrl,
   createInitialUserProfile,
+  generateShortReferCode,
   getBangladeshDateKey,
 } from './store/initialData';
 import {
+  claimReferralByCodeOrId,
   fetchRealLeaderboard,
   fetchRealUserHistory,
+  incrementPromoUsageInFirestore,
   initAndSyncRealUser,
   submitRealWithdrawToFirestore,
   subscribeToAppConfig,
@@ -73,19 +77,19 @@ const STORAGE_KEYS = {
   TRANSACTIONS: 'jmj_ads_tx_v3',
   WITHDRAWALS: 'jmj_ads_wd_v3',
   PROMOS: 'jmj_ads_promos_v3',
-  THEME: 'jmj_ads_theme_v3',
 };
+
+function formatCountdownHMS(totalSeconds: number): string {
+  const hrs = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const secs = totalSeconds % 60;
+  return `${String(hrs).padStart(2, '0')}ঘ : ${String(mins).padStart(2, '0')}মি : ${String(secs).padStart(2, '0')}সে`;
+}
 
 export default function App() {
   // Splash Screen State
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [splashProgress, setSplashProgress] = useState<number>(20);
-
-  // Theme State (Dark & Light Mode support, no green/blue)
-  const [isDark, setIsDark] = useState<boolean>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.THEME);
-    return saved ? saved === 'dark' : true;
-  });
 
   // Navigation State (Strictly User Pages Only)
   const [activePage, setActivePage] = useState<UserPageTab>('home');
@@ -101,13 +105,17 @@ export default function App() {
     }
   });
 
-  // Real Tasks synced from Firestore + localStorage
+  // Real Tasks synced from Firestore + localStorage (with @jmjads official channel always available)
   const [tasks, setTasks] = useState<TaskItem[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.TASKS);
-      return saved ? JSON.parse(saved) : [];
+      if (saved) {
+        const parsed: TaskItem[] = JSON.parse(saved);
+        return parsed.length > 0 ? parsed : INITIAL_TASKS;
+      }
+      return INITIAL_TASKS;
     } catch {
-      return [];
+      return INITIAL_TASKS;
     }
   });
 
@@ -121,8 +129,10 @@ export default function App() {
         if (parsed.todayDateKey !== today) {
           parsed.todayAdsWatched = 0;
           parsed.todayEarned = 0;
-          parsed.spinsUsedToday = 0;
           parsed.todayDateKey = today;
+        }
+        if (!parsed.referralCode) {
+          parsed.referralCode = generateShortReferCode(parsed.telegramId);
         }
         return parsed;
       }
@@ -186,9 +196,24 @@ export default function App() {
   });
   const [adCooldown, setAdCooldown] = useState<number>(0);
 
+  // 2-Hour Batch Timer State (10 ads every 2 hours)
+  const [nowMs, setNowMs] = useState<number>(Date.now());
+
+  // Official Channel https://t.me/jmjads Top Verification State
+  const [officialChannelOpenedAt, setOfficialChannelOpenedAt] = useState<number | null>(null);
+  const [officialChannelCountdown, setOfficialChannelCountdown] = useState<number>(0);
+  const [verifyingOfficialChannel, setVerifyingOfficialChannel] = useState<boolean>(false);
+
   // Task Verification State & Active Countdowns
   const [verifyingTaskId, setVerifyingTaskId] = useState<string | null>(null);
   const [activeTaskTimers, setActiveTaskTimers] = useState<Record<string, number>>({});
+
+  // Manual Referral Code Input (Solves Telegram Bot /start loss issue 100%)
+  const [manualRefInput, setManualRefInput] = useState<string>('');
+  const [claimingManualRef, setClaimingManualRef] = useState<boolean>(false);
+
+  // Inline Promo Code Input
+  const [inlinePromoCode, setInlinePromoCode] = useState<string>('');
 
   // Withdraw Form State
   const [wdMethod, setWdMethod] = useState<'bKash' | 'Nagad' | 'Rocket' | 'Upay' | 'Binance'>('bKash');
@@ -203,14 +228,70 @@ export default function App() {
     setToastState({ msg, id: Date.now() });
   };
 
+  // Native Telegram Alert + Top Toast helper when user tries to claim without subscribing
+  const triggerTelegramNativeAlert = (message: string) => {
+    showToast(message);
+    try {
+      const tg = (
+        window as unknown as {
+          Telegram?: {
+            WebApp?: {
+              showAlert?: (msg: string) => void;
+              HapticFeedback?: { notificationOccurred?: (type: 'error' | 'warning' | 'success') => void };
+            };
+          };
+        }
+      ).Telegram?.WebApp;
+      tg?.HapticFeedback?.notificationOccurred?.('error');
+      if (typeof tg?.showAlert === 'function') {
+        tg.showAlert(message);
+      }
+    } catch {}
+  };
+
   useEffect(() => {
     if (!toastState) return;
     const t = setTimeout(() => setToastState(null), 3000);
     return () => clearTimeout(t);
   }, [toastState]);
 
+  // Real-time 1-second clock for 2-Hour Ad Batch Cooldown
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Calculate 2-Hour Batch Status (10 ads per 2 hours)
+  const batchLimit = Math.max(1, Number(config.adsPerBatchLimit || 10));
+  const batchCooldownMs = Math.max(1, Number(config.adBatchCooldownHours || 2)) * 3600 * 1000;
+  const elapsedSinceCycle = user.batchCycleStartAt ? nowMs - user.batchCycleStartAt : batchCooldownMs + 1000;
+  const isBatchCycleExpired = elapsedSinceCycle >= batchCooldownMs;
+  const currentBatchWatched = isBatchCycleExpired ? 0 : user.batchAdsWatched;
+  const isBatchLocked = !isBatchCycleExpired && currentBatchWatched >= batchLimit;
+  const batchRemainingSeconds = isBatchLocked
+    ? Math.max(0, Math.ceil((batchCooldownMs - elapsedSinceCycle) / 1000))
+    : 0;
+
+  // Auto-reset batchAdsWatched when 2 hours have elapsed
+  useEffect(() => {
+    if (user.batchAdsWatched > 0 && isBatchCycleExpired) {
+      setUser((prev) => ({
+        ...prev,
+        batchAdsWatched: 0,
+        batchCycleStartAt: 0,
+      }));
+      updateRealUserInFirestore(user.telegramId, {
+        batchAdsWatched: 0,
+        batchCycleStartAt: 0,
+      });
+    }
+  }, [isBatchCycleExpired, user.batchAdsWatched, user.telegramId]);
+
   // Initialize Telegram WebApp & Real Firebase Subscriptions
   useEffect(() => {
+    document.documentElement.classList.add('dark');
     try {
       const tg = (
         window as unknown as {
@@ -282,11 +363,6 @@ export default function App() {
 
   // Persist states locally
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.THEME, isDark ? 'dark' : 'light');
-    document.documentElement.classList.toggle('dark', isDark);
-  }, [isDark]);
-
-  useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
   }, [user]);
 
@@ -311,6 +387,15 @@ export default function App() {
     return () => clearInterval(t);
   }, [adCooldown]);
 
+  // Official Channel Countdown Tick
+  useEffect(() => {
+    if (officialChannelCountdown <= 0) return;
+    const t = setInterval(() => {
+      setOfficialChannelCountdown((c) => Math.max(0, c - 1));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [officialChannelCountdown]);
+
   // Tick active task timers
   useEffect(() => {
     const keys = Object.keys(activeTaskTimers);
@@ -329,7 +414,7 @@ export default function App() {
                 ...(oldStates[taskId] || {
                   taskId,
                   openedAt: Date.now(),
-                  elapsedSeconds: 10,
+                  elapsedSeconds: 8,
                   telegramSubscribed: true,
                   claimedCount: 0,
                   lastClaimedDate: null,
@@ -386,7 +471,111 @@ export default function App() {
     );
   };
 
+  // Verify Telegram Channel Membership via Telegram Bot API getChatMember
+  const checkTelegramChannelSubscription = async (
+    channelHandleOrUrl: string
+  ): Promise<{ subscribed: boolean; checkedViaApi: boolean; channelName: string }> => {
+    let chatId = (channelHandleOrUrl || '@jmjads').trim();
+    if (chatId.includes('t.me/')) {
+      const slug = chatId.split('t.me/')[1]?.split(/[/?#]/)[0] || 'jmjads';
+      chatId = `@${slug}`;
+    } else if (!chatId.startsWith('@')) {
+      chatId = `@${chatId}`;
+    }
+
+    if (config.telegramBotToken && !String(user.telegramId).startsWith('tg_')) {
+      try {
+        const apiUrl = `https://api.telegram.org/bot${config.telegramBotToken}/getChatMember?chat_id=${encodeURIComponent(
+          chatId
+        )}&user_id=${encodeURIComponent(user.telegramId)}`;
+        const res = await fetch(apiUrl);
+        const data = await res.json();
+        if (data && data.ok && data.result) {
+          const status = data.result.status;
+          const isMember = ['member', 'administrator', 'creator'].includes(status);
+          return { subscribed: isMember, checkedViaApi: true, channelName: chatId };
+        }
+      } catch (e) {
+        console.warn('Telegram getChatMember error:', e);
+      }
+    }
+
+    return { subscribed: true, checkedViaApi: false, channelName: chatId };
+  };
+
+  // Open Official Channel https://t.me/jmjads directly inside Telegram
+  const handleOpenOfficialChannel = () => {
+    const channelUrl = config.officialChannelUrl || 'https://t.me/jmjads';
+    const tg = (
+      window as unknown as {
+        Telegram?: {
+          WebApp?: {
+            openTelegramLink?: (url: string) => void;
+          };
+        };
+      }
+    ).Telegram?.WebApp;
+
+    if (tg?.openTelegramLink && channelUrl.includes('t.me')) {
+      tg.openTelegramLink(channelUrl);
+    } else {
+      window.open(channelUrl, '_blank', 'noopener,noreferrer');
+    }
+
+    setOfficialChannelOpenedAt(Date.now());
+    setOfficialChannelCountdown(8);
+    showToast('চ্যানেল সাবস্ক্রাইব করে ৮ সেকেন্ড পর ভেরিফাই চাপুন');
+  };
+
+  // Verify & Claim Official Channel https://t.me/jmjads
+  const handleVerifyOfficialChannel = async () => {
+    if (user.officialChannelClaimed) {
+      showToast('আপনি ইতিমধ্যে অফিশিয়াল চ্যানেল বোনাস ক্লেইম করেছেন!');
+      return;
+    }
+
+    if (!officialChannelOpenedAt) {
+      triggerTelegramNativeAlert(
+        '⚠️ আপনি এখনো https://t.me/jmjads চ্যানেলে জয়েন করেননি! আগে "সাবস্ক্রাইব করুন" বাটনে ট্যাপ করে চ্যানেলে জয়েন করুন।'
+      );
+      return;
+    }
+
+    const elapsedSec = Math.floor((Date.now() - officialChannelOpenedAt) / 1000);
+    if (officialChannelCountdown > 0 || elapsedSec < 8) {
+      triggerTelegramNativeAlert(
+        `⚠️ চ্যানেল সাবস্ক্রাইব না করেই ফিরে এসেছেন! অনুগ্রহ করে https://t.me/jmjads চ্যানেলে জয়েন করে আরও ${Math.max(
+          1,
+          8 - elapsedSec
+        )} সেকেন্ড অপেক্ষা করুন।`
+      );
+      return;
+    }
+
+    setVerifyingOfficialChannel(true);
+    const checkResult = await checkTelegramChannelSubscription(
+      config.officialChannelUsername || '@jmjads'
+    );
+    setVerifyingOfficialChannel(false);
+
+    if (!checkResult.subscribed) {
+      triggerTelegramNativeAlert(
+        `❌ ভেরিফিকেশন ব্যর্থ! আপনি এখনো ${checkResult.channelName} চ্যানেলে সাবস্ক্রাইব করেননি। সাবস্ক্রাইব ছাড়া বোনাস ক্লেইম হবে না!`
+      );
+      return;
+    }
+
+    const rewardAmt = Number(config.officialChannelReward || 30);
+    creditUserReward(rewardAmt, 'channel_bonus', 'অফিশিয়াল চ্যানেল (@jmjads) জয়েন বোনাস', {
+      officialChannelClaimed: true,
+    });
+    showToast(`অভিনন্দন! চ্যানেল সাবস্ক্রাইব বোনাস +৳${rewardAmt} যোগ হয়েছে`);
+  };
+
   const isTaskClaimed = (task: TaskItem): boolean => {
+    if (task.id === 'official_jmjads_channel' && user.officialChannelClaimed) {
+      return true;
+    }
     const st = taskStates[task.id];
     if (!st) return false;
     if (task.frequency === 'once') {
@@ -395,10 +584,10 @@ export default function App() {
     return st.lastClaimedDate === getBangladeshDateKey();
   };
 
-  // Watch Monetag Rewarded Ad
+  // Watch Monetag Rewarded Ad (10 Ads every 2 hours)
   const handleStartWatchMonetagAd = () => {
-    if (user.todayAdsWatched >= config.dailyAdLimit) {
-      showToast(`আজকের ${config.dailyAdLimit}টি বিজ্ঞাপনের কোটা পূর্ণ হয়েছে!`);
+    if (isBatchLocked) {
+      showToast(`এই স্লটের ${batchLimit}টি অ্যাড শেষ! ${formatCountdownHMS(batchRemainingSeconds)} পর আবার দেখুন`);
       return;
     }
     if (adCooldown > 0) {
@@ -406,24 +595,39 @@ export default function App() {
       return;
     }
 
+    const nextBatchNumber = currentBatchWatched + 1;
+
     setAdModalState({
       open: true,
       reward: config.adReward,
-      purpose: `Monetag অ্যাড (${user.todayAdsWatched + 1}/${config.dailyAdLimit})`,
+      purpose: `Monetag অ্যাড (${nextBatchNumber}/${batchLimit})`,
       onCompleteCallback: () => {
-        const nextAdsCount = user.todayAdsWatched + 1;
+        const nowTimestamp = Date.now();
+        const cycleStart =
+          currentBatchWatched === 0 || isBatchCycleExpired ? nowTimestamp : user.batchCycleStartAt || nowTimestamp;
+        const nextAdsToday = user.todayAdsWatched + 1;
         const nextTotalAds = user.totalAdsWatched + 1;
+
         creditUserReward(
           config.adReward,
           'ad_reward',
-          `Monetag বিজ্ঞাপন বোনাস (${nextAdsCount}/${config.dailyAdLimit})`,
+          `Monetag বিজ্ঞাপন বোনাস (${nextBatchNumber}/${batchLimit})`,
           {
-            todayAdsWatched: nextAdsCount,
+            batchAdsWatched: nextBatchNumber,
+            batchCycleStartAt: cycleStart,
+            todayAdsWatched: nextAdsToday,
             totalAdsWatched: nextTotalAds,
           }
         );
         setAdCooldown(config.adCooldownSeconds);
-        showToast(`সফলভাবে ক্লেইম হয়েছে! +৳${config.adReward} যোগ হয়েছে`);
+
+        if (nextBatchNumber >= batchLimit) {
+          showToast(
+            `১০টি অ্যাড সম্পন্ন! ${config.adBatchCooldownHours} ঘণ্টা পর আবার ১০টি অ্যাড আনলক হবে`
+          );
+        } else {
+          showToast(`সফলভাবে ক্লেইম হয়েছে! +৳${config.adReward} যোগ হয়েছে`);
+        }
       },
     });
   };
@@ -478,7 +682,7 @@ export default function App() {
     }
   };
 
-  // Verify & Claim Task
+  // Verify & Claim Task (with Telegram Native Alert on unsubscribed claim attempt)
   const handleVerifyAndClaimTask = async (task: TaskItem) => {
     if (isTaskClaimed(task)) {
       showToast('এই টাস্কটি ইতিমধ্যে সম্পন্ন হয়েছে!');
@@ -488,11 +692,13 @@ export default function App() {
     const st = taskStates[task.id];
 
     if (!st || !st.openedAt) {
-      showToast(
-        task.platform === 'telegram'
-          ? 'আগে চ্যানেল ওপেন করে সাবস্ক্রাইব করুন!'
-          : 'আগে লিংক খুলুন, তারপর ক্লেইম আনলক হবে!'
-      );
+      if (task.platform === 'telegram') {
+        triggerTelegramNativeAlert(
+          `⚠️ আপনি এখনো চ্যানেল সাবস্ক্রাইব করেননি! আগে "চ্যানেল ওপেন" বাটনে ট্যাপ করে সাবস্ক্রাইব করুন।`
+        );
+      } else {
+        triggerTelegramNativeAlert('⚠️ আগে লিংক ওপেন করে কাজটি সম্পন্ন করুন, তারপর ক্লেইম করুন!');
+      }
       return;
     }
 
@@ -500,39 +706,29 @@ export default function App() {
     const requiredSec = task.requiredSeconds || 8;
 
     if (activeTaskTimers[task.id] > 0 || secondsSinceOpen < requiredSec) {
-      showToast(
-        task.platform === 'telegram'
-          ? `সাবস্ক্রাইব না করেই ফিরেছেন! জয়েন করে ${requiredSec}s অপেক্ষা করুন`
-          : `এখনো ${Math.max(1, requiredSec - secondsSinceOpen)} সেকেন্ড বাকি আছে!`
-      );
+      if (task.platform === 'telegram') {
+        triggerTelegramNativeAlert(
+          `⚠️ সাবস্ক্রাইব না করেই ফিরে এসেছেন! চ্যানেলে জয়েন করে অন্তত ${requiredSec} সেকেন্ড অপেক্ষা করুন।`
+        );
+      } else {
+        triggerTelegramNativeAlert(
+          `⏳ এখনো ${Math.max(1, requiredSec - secondsSinceOpen)} সেকেন্ড অপেক্ষা করা বাকি আছে!`
+        );
+      }
       return;
     }
 
     if (task.platform === 'telegram') {
       setVerifyingTaskId(task.id);
-
-      if (config.telegramBotToken && task.channelUsername) {
-        try {
-          const chatId = task.channelUsername.startsWith('@')
-            ? task.channelUsername
-            : `@${task.channelUsername}`;
-          const apiUrl = `https://api.telegram.org/bot${config.telegramBotToken}/getChatMember?chat_id=${encodeURIComponent(
-            chatId
-          )}&user_id=${encodeURIComponent(user.telegramId)}`;
-          const res = await fetch(apiUrl);
-          const data = await res.json();
-
-          if (!data.ok || !['member', 'administrator', 'creator'].includes(data.result?.status)) {
-            setVerifyingTaskId(null);
-            showToast(`আপনি এখনো ${chatId} চ্যানেল সাবস্ক্রাইব করেননি!`);
-            return;
-          }
-        } catch (err) {
-          console.warn('Telegram Bot API check error:', err);
-        }
-      }
-
+      const checkRes = await checkTelegramChannelSubscription(task.channelUsername || task.url);
       setVerifyingTaskId(null);
+
+      if (!checkRes.subscribed) {
+        triggerTelegramNativeAlert(
+          `❌ আপনি এখনো ${checkRes.channelName} চ্যানেলে সাবস্ক্রাইব করেননি! সাবস্ক্রাইব না করলে বোনাস যোগ হবে না।`
+        );
+        return;
+      }
     }
 
     const grantReward = () => {
@@ -547,7 +743,10 @@ export default function App() {
         },
       }));
 
-      creditUserReward(task.reward, 'task_reward', `${task.title} বোনাস`);
+      const extraPatch: Partial<UserProfile> =
+        task.id === 'official_jmjads_channel' ? { officialChannelClaimed: true } : {};
+
+      creditUserReward(task.reward, 'task_reward', `${task.title} বোনাস`, extraPatch);
       showToast(`টাস্ক সম্পন্ন! +৳${task.reward} BDT ক্লেইম হয়েছে`);
     };
 
@@ -563,14 +762,92 @@ export default function App() {
     }
   };
 
+  // Handle Manual Referral Code Claim (100% solution when Telegram Bot /start drops referral param)
+  const handleManualReferralClaim = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualRefInput.trim()) {
+      showToast('বন্ধুর রেফার কোড বা আইডি লিখুন!');
+      return;
+    }
+    if (user.referredBy) {
+      showToast('আপনি ইতিমধ্যে রেফার বোনাস ক্লেইম করেছেন!');
+      return;
+    }
+
+    setClaimingManualRef(true);
+    const res = await claimReferralByCodeOrId(
+      user.telegramId,
+      manualRefInput,
+      config.referralBonus,
+      config.referredJoinBonus || 20
+    );
+    setClaimingManualRef(false);
+
+    if (res.ok) {
+      const joinBonus = res.inviteeBonusAdded || 0;
+      setUser((prev) => ({
+        ...prev,
+        referredBy: manualRefInput.trim(),
+        balance: prev.balance + joinBonus,
+        todayEarned: prev.todayEarned + joinBonus,
+        totalEarned: prev.totalEarned + joinBonus,
+      }));
+      setManualRefInput('');
+      showToast(res.message);
+    } else {
+      triggerTelegramNativeAlert(res.message);
+    }
+  };
+
+  // Handle Promo Code Redeem
+  const handleRedeemPromoCode = async (rawCode: string) => {
+    const clean = rawCode.trim().toUpperCase();
+    if (!clean) {
+      showToast('প্রোমো কোড লিখুন!');
+      return;
+    }
+    if (user.redeemedPromoCodes.includes(clean)) {
+      showToast('আপনি ইতিমধ্যে এই কোডটি ব্যবহার করেছেন!');
+      return;
+    }
+    const found = promoCodes.find((p) => p.code.toUpperCase() === clean);
+    if (!found) {
+      showToast('ভুল প্রোমো কোড! সঠিক কোড দিন।');
+      return;
+    }
+    if (!found.active) {
+      showToast('এই প্রোমো কোডটি বর্তমানে ইনঅ্যাক্টিভ (বন্ধ) আছে!');
+      return;
+    }
+    if (found.usedCount >= found.maxUses) {
+      showToast('এই প্রোমো কোডের ব্যবহারের লিমিট শেষ হয়ে গেছে!');
+      return;
+    }
+
+    setPromoCodes((prev) =>
+      prev.map((p) => (p.code.toUpperCase() === clean ? { ...p, usedCount: p.usedCount + 1 } : p))
+    );
+    await incrementPromoUsageInFirestore(found.code);
+
+    const desc = found.rewardTitle
+      ? `প্রোমো বোনাস: ${found.rewardTitle} (${clean})`
+      : `প্রোমো কোড (${clean}) বোনাস`;
+
+    creditUserReward(found.reward, 'promo_code', desc, {
+      redeemedPromoCodes: [...user.redeemedPromoCodes, clean],
+    });
+    setInlinePromoCode('');
+    showToast(`প্রোমো সফল! +৳${found.reward} BDT (${found.rewardTitle || clean}) যোগ হয়েছে`);
+  };
+
   // Submit Real Withdrawal Request
   const handleWithdrawSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const amountNum = Number(wdAmount);
 
-    if (config.requireDailyAdsForWithdraw && user.todayAdsWatched < config.dailyAdLimit) {
+    if (config.requireDailyAdsForWithdraw && currentBatchWatched < batchLimit && user.todayAdsWatched < batchLimit) {
       showToast(
-        `উইথড্র করতে আজকের আরও ${config.dailyAdLimit - user.todayAdsWatched}টি বিজ্ঞাপন দেখুন!`
+        `উইথড্র করতে কমপক্ষে ${batchLimit}টি বিজ্ঞাপন দেখা সম্পন্ন করুন!`
       );
       return;
     }
@@ -648,16 +925,22 @@ export default function App() {
     showToast('আপনার উত্তোলন রিকোয়েস্ট সফলভাবে জমা হয়েছে!');
   };
 
-  // Real Dynamic Referral Link
+  // Real Dynamic Referral Link + Short Referral Code
   const referralLink = buildDynamicReferralUrl(config, user.telegramId);
+  const myReferCode = user.referralCode || generateShortReferCode(user.telegramId);
 
   const handleCopyRefLink = () => {
     navigator.clipboard.writeText(referralLink);
     showToast('রেফারেল লিংক কপি করা হয়েছে!');
   };
 
+  const handleCopyRefCode = () => {
+    navigator.clipboard.writeText(myReferCode);
+    showToast(`রেফার কোড (${myReferCode}) কপি করা হয়েছে!`);
+  };
+
   const handleShareRefLink = () => {
-    const shareText = `🔥 ${config.siteName}-এ কাজ করে প্রতিদিন টাকা আয় করুন! জয়েন বোনাস ৳${config.welcomeBonus}:`;
+    const shareText = `🔥 ${config.siteName}-এ কাজ করে প্রতিদিন টাকা আয় করুন! আমার রেফার কোড: ${myReferCode} (বোনাস ৳${config.welcomeBonus}):`;
     const tg = (
       window as unknown as { Telegram?: { WebApp?: { openTelegramLink?: (url: string) => void } } }
     ).Telegram?.WebApp;
@@ -684,13 +967,78 @@ export default function App() {
   const ytTaskCount = activeTasks.filter((t) => t.platform === 'youtube' && !isTaskClaimed(t)).length;
   const ttTaskCount = activeTasks.filter((t) => t.platform === 'tiktok' && !isTaskClaimed(t)).length;
 
-  // Theme Classes
-  const bgCanvas = isDark ? 'bg-[#0b0613] text-[#fdf8f5]' : 'bg-[#fcf9f6] text-[#1c1026]';
-  const cardSurface = isDark ? 'glass-card-dark' : 'glass-card-light';
-  const heroPrism = isDark ? 'hero-prism-dark text-white' : 'hero-prism-light text-[#1c1026]';
-  const innerGlassStat = isDark
-    ? 'bg-white/[0.06] border border-amber-400/20'
-    : 'bg-amber-500/[0.08] border border-amber-500/25';
+  // Fixed Dark Mode Theme Classes (Light Mode Removed as requested)
+  const bgCanvas = 'bg-[#0b0613] text-[#fdf8f5]';
+  const cardSurface = 'glass-card-dark';
+  const heroPrism = 'hero-prism-dark text-white';
+  const innerGlassStat = 'bg-white/[0.06] border border-amber-400/20';
+
+  // Prominent Top Official Channel Join Card Component (https://t.me/jmjads)
+  const renderProminentOfficialChannelBanner = () => (
+    <div className="rounded-3xl p-4 border-2 border-amber-400/50 bg-gradient-to-r from-[#2c1248] via-[#1f0d38] to-[#33102d] shadow-xl shadow-amber-500/15 glass-reflect">
+      <div className="flex items-center justify-between gap-2.5 mb-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-rose-600 flex items-center justify-center text-white shrink-0 shadow-md shadow-amber-500/30">
+            <Send className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-extrabold text-amber-300 truncate">
+                অফিশিয়াল চ্যানেল জয়েন করুন
+              </span>
+              <span className="px-2 py-0.5 rounded-lg bg-rose-500/25 border border-rose-400/40 text-[10px] font-extrabold text-rose-300 whitespace-nowrap">
+                জরুরি
+              </span>
+            </div>
+            <p className="text-[11px] text-amber-100/80 font-mono-num truncate mt-0.5">
+              {config.officialChannelUrl || 'https://t.me/jmjads'} · বোনাস +৳{config.officialChannelReward || 30}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2.5">
+        <button
+          type="button"
+          onClick={handleOpenOfficialChannel}
+          className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-[#14081f] font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer whitespace-nowrap active:scale-95 transition-transform"
+        >
+          <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+          <span>সাবস্ক্রাইব করুন</span>
+        </button>
+
+        {user.officialChannelClaimed ? (
+          <button
+            type="button"
+            disabled
+            className="py-2.5 px-3 rounded-xl bg-amber-500/15 border border-amber-400/35 text-amber-300 font-extrabold text-xs flex items-center justify-center gap-1.5 opacity-80 cursor-not-allowed whitespace-nowrap"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            <span>ভেরিফাইড ✓</span>
+          </button>
+        ) : officialChannelCountdown > 0 ? (
+          <button
+            type="button"
+            onClick={handleVerifyOfficialChannel}
+            className="py-2.5 px-3 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 font-mono-num font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+          >
+            <Clock className="w-3.5 h-3.5 shrink-0 animate-spin" />
+            <span>অপেক্ষা ({officialChannelCountdown}s)</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleVerifyOfficialChannel}
+            disabled={verifyingOfficialChannel}
+            className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-rose-500 to-purple-600 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-rose-500/25 cursor-pointer whitespace-nowrap active:scale-95 transition-transform"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            <span>{verifyingOfficialChannel ? 'যাচাই হচ্ছে...' : `ভেরিফাই (+৳${config.officialChannelReward || 30})`}</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   // Startup Splash Screen
   if (showSplash) {
@@ -756,22 +1104,18 @@ export default function App() {
   }
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 relative overflow-x-hidden ${bgCanvas}`}>
+    <div className={`min-h-screen relative overflow-x-hidden ${bgCanvas}`}>
       {/* TOP NOTIFICATION TOAST WITH BORDER & 3-SECOND SHRINKING BOTTOM LINE */}
       {toastState && (
         <div
           key={toastState.id}
-          className={`fixed top-3.5 left-1/2 z-[100] w-[92%] max-w-[440px] rounded-2xl border-2 overflow-hidden shadow-2xl backdrop-blur-2xl animate-toast-top ${
-            isDark
-              ? 'bg-[#22103b]/95 border-amber-400/55 text-amber-50 shadow-amber-500/15'
-              : 'bg-white/95 border-amber-500/60 text-[#1c1026] shadow-amber-900/15'
-          }`}
+          className="fixed top-3.5 left-1/2 z-[100] w-[92%] max-w-[440px] rounded-2xl border-2 overflow-hidden shadow-2xl backdrop-blur-2xl animate-toast-top bg-[#22103b]/95 border-amber-400/55 text-amber-50 shadow-amber-500/15"
         >
           <div className="px-4 py-3 flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-amber-400 to-rose-500 flex items-center justify-center text-white shrink-0">
               <Sparkles className="w-4 h-4" />
             </div>
-            <span className="text-xs font-extrabold leading-snug truncate">{toastState.msg}</span>
+            <span className="text-xs font-extrabold leading-snug">{toastState.msg}</span>
           </div>
           {/* 3-Second Shrinking Progress Line */}
           <div className="w-full h-1 bg-amber-500/15">
@@ -782,78 +1126,51 @@ export default function App() {
 
       {/* Ambient Light Reflection Graphics */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div
-          className={`w-96 h-96 rounded-full blur-3xl absolute -top-28 -left-28 ambient-orb ${
-            isDark ? 'bg-amber-500/14' : 'bg-amber-400/20'
-          }`}
-        />
-        <div
-          className={`w-96 h-96 rounded-full blur-3xl absolute top-1/3 -right-28 ambient-orb ${
-            isDark ? 'bg-rose-600/14' : 'bg-rose-400/15'
-          }`}
-        />
-        <div
-          className={`w-80 h-80 rounded-full blur-3xl absolute -bottom-24 left-1/4 ambient-orb ${
-            isDark ? 'bg-purple-600/14' : 'bg-purple-400/15'
-          }`}
-        />
+        <div className="w-96 h-96 rounded-full blur-3xl absolute -top-28 -left-28 ambient-orb bg-amber-500/14" />
+        <div className="w-96 h-96 rounded-full blur-3xl absolute top-1/3 -right-28 ambient-orb bg-rose-600/14" />
+        <div className="w-80 h-80 rounded-full blur-3xl absolute -bottom-24 left-1/4 ambient-orb bg-purple-600/14" />
       </div>
 
       {/* Main Mobile Container */}
       <div className="w-full max-w-[500px] mx-auto min-h-screen pb-28 relative z-10">
-        {/* TOP HEADER */}
-        <header
-          className={`sticky top-0 z-30 px-4 py-2.5 backdrop-blur-xl border-b flex items-center justify-between gap-2 transition-colors ${
-            isDark ? 'bg-[#0b0613]/88 border-amber-500/15' : 'bg-[#fcf9f6]/90 border-amber-600/15'
-          }`}
-        >
+        {/* TOP HEADER (Light mode button removed as requested) */}
+        <header className="sticky top-0 z-30 px-4 py-2.5 backdrop-blur-xl border-b flex items-center justify-between gap-2 bg-[#0b0613]/88 border-amber-500/15">
           {/* Zone 1: Clean Compact Name Only */}
           <button
             type="button"
             onClick={() => setActivePage('home')}
             className="text-left cursor-pointer focus:outline-none shrink-0"
           >
-            <BrandLogo siteName={config.siteName} isDark={isDark} size="md" />
+            <BrandLogo siteName={config.siteName} isDark={true} size="md" />
           </button>
 
           {/* Zone 2: Compact Live Balance */}
           <button
             type="button"
             onClick={() => setActivePage('withdraw')}
-            className={`px-3 py-1 rounded-xl border text-xs font-mono-num font-bold flex items-center gap-1.5 cursor-pointer shrink-0 ${
-              isDark
-                ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                : 'bg-amber-500/15 border-amber-600/30 text-amber-900'
-            }`}
+            className="px-3 py-1 rounded-xl border text-xs font-mono-num font-bold flex items-center gap-1.5 cursor-pointer shrink-0 bg-amber-500/10 border-amber-500/30 text-amber-300"
           >
             <Wallet className="w-3.5 h-3.5 text-amber-500 shrink-0" />
             <span className="whitespace-nowrap">৳{user.balance.toFixed(2)}</span>
           </button>
 
-          {/* Zone 3: User Actions */}
+          {/* Zone 3: Quick Channel Join, Bonus & Notice */}
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              onClick={() => setIsDark(!isDark)}
-              title={isDark ? 'লাইট মোড' : 'ডার্ক মোড'}
-              className={`w-8 h-8 rounded-xl border flex items-center justify-center cursor-pointer transition-transform active:scale-95 ${
-                isDark
-                  ? 'bg-[#1a0f2e] border-amber-500/25 text-amber-400'
-                  : 'bg-white border-amber-600/25 text-amber-700 shadow-sm'
-              }`}
+              onClick={handleOpenOfficialChannel}
+              title="অফিশিয়াল টেলিগ্রাম চ্যানেল (@jmjads)"
+              className="px-2.5 h-8 rounded-xl border bg-amber-500/15 border-amber-400/35 text-amber-300 text-[11px] font-extrabold flex items-center gap-1 cursor-pointer transition-transform active:scale-95"
             >
-              {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+              <Send className="w-3 h-3 text-amber-400 shrink-0" />
+              <span>চ্যানেল</span>
             </button>
 
             <button
               type="button"
               onClick={() => setBonusModalOpen(true)}
               title="ডেইলি বোনাস ও প্রোমো কোড"
-              className={`w-8 h-8 rounded-xl border flex items-center justify-center cursor-pointer transition-transform active:scale-95 ${
-                isDark
-                  ? 'bg-[#1a0f2e] border-rose-500/30 text-rose-400'
-                  : 'bg-white border-rose-500/30 text-rose-600 shadow-sm'
-              }`}
+              className="w-8 h-8 rounded-xl border flex items-center justify-center cursor-pointer transition-transform active:scale-95 bg-[#1a0f2e] border-rose-500/30 text-rose-400"
             >
               <Gift className="w-3.5 h-3.5" />
             </button>
@@ -862,11 +1179,7 @@ export default function App() {
               type="button"
               onClick={() => setNoticeOpen(true)}
               title="গুরুত্বপূর্ণ নোটিশ"
-              className={`w-8 h-8 rounded-xl border flex items-center justify-center relative cursor-pointer transition-transform active:scale-95 ${
-                isDark
-                  ? 'bg-[#1a0f2e] border-amber-500/25 text-amber-300'
-                  : 'bg-white border-amber-600/25 text-amber-800 shadow-sm'
-              }`}
+              className="w-8 h-8 rounded-xl border flex items-center justify-center relative cursor-pointer transition-transform active:scale-95 bg-[#1a0f2e] border-amber-500/25 text-amber-300"
             >
               <Bell className="w-3.5 h-3.5" />
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500 absolute top-1.5 right-1.5" />
@@ -881,26 +1194,8 @@ export default function App() {
           ========================================================= */}
           {activePage === 'home' && (
             <div className="space-y-4 animate-fadeIn">
-              {/* Verified Publisher Banner (Concise, no line breaks touching borders) */}
-              <div
-                className={`rounded-2xl px-4 py-3.5 border flex items-center gap-3 glass-reflect ${
-                  isDark
-                    ? 'bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-purple-500/10 border-amber-500/30'
-                    : 'bg-gradient-to-r from-amber-50 via-rose-50 to-purple-50 border-amber-500/35'
-                }`}
-              >
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-rose-600 flex items-center justify-center text-white shrink-0 shadow-md shadow-amber-500/20">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-extrabold truncate">
-                    ভেরিফাইড পাবলিশার · <span className="text-amber-500">ACTIVE</span>
-                  </div>
-                  <p className="text-[11px] opacity-80 mt-0.5 truncate">
-                    উত্তোলন সক্রিয় ও প্রতিটি কাজে ২ গুণ প্রফিট চালু!
-                  </p>
-                </div>
-              </div>
+              {/* TOP PROMINENT OFFICIAL CHANNEL BANNER (https://t.me/jmjads) */}
+              {renderProminentOfficialChannelBanner()}
 
               {/* Greeting & Rules Button Row */}
               <div className="flex items-center justify-between gap-3 px-1">
@@ -909,25 +1204,22 @@ export default function App() {
                     {[user.firstName, user.lastName].filter(Boolean).join(' ') || 'Telegram Member'}
                   </h2>
                   <p className="text-[11px] opacity-70 truncate">
-                    ID: <span className="font-mono-num">{user.telegramId}</span> · আর্নিং ড্যাশবোর্ড
+                    ID: <span className="font-mono-num">{user.telegramId}</span> · কোড:{' '}
+                    <span className="font-mono-num text-amber-400 font-bold">{myReferCode}</span>
                   </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setNoticeOpen(true)}
-                  className={`px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
-                    isDark
-                      ? 'bg-amber-500/15 border-amber-500/35 text-amber-300 hover:bg-amber-500/25'
-                      : 'bg-amber-100/80 border-amber-500/40 text-amber-900 hover:bg-amber-200/70'
-                  }`}
+                  className="px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 bg-amber-500/15 border-amber-500/35 text-amber-300 hover:bg-amber-500/25"
                 >
                   <span>নিয়মাবলী</span>
                   <ListChecks className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                 </button>
               </div>
 
-              {/* MASTER SPECULAR GLASS BALANCE CARD (Zero black inner boxes) */}
+              {/* MASTER SPECULAR GLASS BALANCE CARD */}
               <div className={`rounded-3xl p-5 relative overflow-hidden glass-reflect ${heroPrism}`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-semibold opacity-90">
@@ -984,7 +1276,7 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Today's Ad Work Strip */}
+              {/* 2-Hour Batch Ad Strip (10 Ads every 2 hours) */}
               <div className={`rounded-2xl p-4 flex items-center justify-between gap-3 ${cardSurface}`}>
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500 shrink-0">
@@ -992,13 +1284,19 @@ export default function App() {
                   </div>
                   <div className="min-w-0">
                     <div className="text-xs font-extrabold truncate">
-                      আজকের কাজ:{' '}
-                      <span className="text-amber-500 font-mono-num">
-                        {user.todayAdsWatched}/{config.dailyAdLimit}টি
+                      অ্যাড স্লট ({config.adBatchCooldownHours} ঘণ্টা):{' '}
+                      <span className="text-amber-400 font-mono-num">
+                        {currentBatchWatched}/{batchLimit}টি
                       </span>
                     </div>
-                    <div className="text-[11px] opacity-75 mt-0.5 truncate">
-                      প্রতি অ্যাড ৳{config.adReward} টাকা বোনাস
+                    <div className="text-[11px] opacity-80 mt-0.5 truncate">
+                      {isBatchLocked ? (
+                        <span className="text-rose-400 font-mono-num font-bold">
+                          পরবর্তী স্লট: {formatCountdownHMS(batchRemainingSeconds)}
+                        </span>
+                      ) : (
+                        `প্রতি ২ ঘণ্টা পর পর ${batchLimit}টি অ্যাড · প্রতি অ্যাড ৳${config.adReward}`
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1006,14 +1304,15 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleStartWatchMonetagAd}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-rose-600 text-white text-xs font-extrabold flex items-center gap-1 shadow-lg shadow-amber-500/25 cursor-pointer whitespace-nowrap shrink-0"
+                  disabled={isBatchLocked}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-rose-600 text-white text-xs font-extrabold flex items-center gap-1 shadow-lg shadow-amber-500/25 cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
                 >
-                  <span>কাজ করুন</span>
+                  <span>{isBatchLocked ? 'অপেক্ষা' : 'কাজ করুন'}</span>
                   <ChevronRight className="w-4 h-4 shrink-0" />
                 </button>
               </div>
 
-              {/* 4-Card Bento Quick Grid (Concise single-line labels, no Spin Wheel) */}
+              {/* 4-Card Bento Quick Grid */}
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -1024,9 +1323,9 @@ export default function App() {
                     <Play className="w-4 h-4 fill-current" />
                   </div>
                   <div className="text-base font-extrabold font-mono-num whitespace-nowrap">
-                    {user.todayAdsWatched}/{config.dailyAdLimit}
+                    {currentBatchWatched}/{batchLimit}
                   </div>
-                  <div className="text-xs opacity-80 whitespace-nowrap">অ্যাড দেখুন</div>
+                  <div className="text-xs opacity-80 whitespace-nowrap">২ ঘণ্টায় ১০ অ্যাড</div>
                 </button>
 
                 <button
@@ -1049,8 +1348,8 @@ export default function App() {
                   <div className="w-10 h-10 rounded-2xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400">
                     <Flame className="w-4 h-4" />
                   </div>
-                  <div className="text-base font-extrabold whitespace-nowrap">ডেইলি বোনাস</div>
-                  <div className="text-xs opacity-80 whitespace-nowrap">চেক-ইন ও প্রোমো</div>
+                  <div className="text-base font-extrabold whitespace-nowrap">ডেইলি ও প্রোমো</div>
+                  <div className="text-xs opacity-80 whitespace-nowrap">চেক-ইন ও কোড</div>
                 </button>
 
                 <button
@@ -1069,24 +1368,77 @@ export default function App() {
                 </button>
               </div>
 
-              {/* REAL DYNAMIC REFER & EARN CARD */}
+              {/* PROMO CODE QUICK CLAIM BOX ON HOME */}
+              <div className={`rounded-3xl p-4 space-y-2.5 ${cardSurface}`}>
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-extrabold flex items-center gap-1.5 text-amber-400">
+                    <Sparkles className="w-4 h-4 shrink-0" />
+                    <span>প্রোমো কোড রিডিম করুন</span>
+                  </div>
+                  <a
+                    href={config.officialChannelUrl || 'https://t.me/jmjads'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-bold text-rose-400 hover:underline whitespace-nowrap"
+                  >
+                    @jmjads চ্যানেলে কোড পান ↗
+                  </a>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={inlinePromoCode}
+                    onChange={(e) => setInlinePromoCode(e.target.value.toUpperCase())}
+                    placeholder="এখানে প্রোমো কোড লিখুন..."
+                    className="flex-1 min-w-0 rounded-xl px-3.5 py-2.5 text-xs font-mono-num font-bold outline-none border bg-[#170b28] border-amber-500/35 text-amber-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleRedeemPromoCode(inlinePromoCode)}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-rose-500 text-[#14081f] text-xs font-extrabold cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    ক্লেইম করুন
+                  </button>
+                </div>
+              </div>
+
+              {/* DUAL-MODE REFER & EARN CARD (Link + Manual Code Entry for Telegram Start Fix) */}
               <div className={`rounded-3xl p-5 space-y-3.5 ${cardSurface}`}>
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <Gift className="w-4 h-4 text-amber-500 shrink-0" />
                     <h3 className="text-sm font-extrabold truncate">বন্ধু রেফার করে আয়</h3>
                   </div>
-                  <span className="text-xs font-mono-num font-bold text-amber-500 whitespace-nowrap shrink-0">
+                  <span className="text-xs font-mono-num font-bold text-amber-400 whitespace-nowrap shrink-0">
                     {user.referralCount} জন রেফার
                   </span>
                 </div>
 
                 <p className="text-xs opacity-80 leading-relaxed">
-                  প্রতিটি ভ্যালিড রেফারে আপনি পাবেন <b className="text-amber-500">৳{config.referralBonus} BDT</b> ইনস্ট্যান্ট বোনাস।
+                  প্রতিটি রেফারে আপনি পাবেন <b className="text-amber-400">৳{config.referralBonus} BDT</b>। আপনার বন্ধু ডিরেক্ট লিংক অথবা আপনার <b>রেফার কোড</b> বসালেই সাথে সাথে রেফার কাউন্ট হবে!
                 </p>
 
+                {/* User's Unique Short Referral Code Box */}
                 <div className={`px-3.5 py-2.5 rounded-2xl flex items-center justify-between gap-2 ${innerGlassStat}`}>
-                  <span className="text-xs font-mono-num text-amber-400 truncate">{referralLink}</span>
+                  <div className="min-w-0">
+                    <div className="text-[10px] opacity-70">আপনার রেফার কোড (বন্ধুকে দিন):</div>
+                    <div className="text-sm font-extrabold font-mono-num text-amber-400 tracking-wider">
+                      {myReferCode}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyRefCode}
+                    className="px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>কোড কপি</span>
+                  </button>
+                </div>
+
+                {/* Direct Referral Link Box */}
+                <div className={`px-3.5 py-2.5 rounded-2xl flex items-center justify-between gap-2 ${innerGlassStat}`}>
+                  <span className="text-xs font-mono-num text-amber-300 truncate">{referralLink}</span>
                   <button
                     type="button"
                     onClick={handleCopyRefLink}
@@ -1115,6 +1467,40 @@ export default function App() {
                     <span>শেয়ার করুন</span>
                   </button>
                 </div>
+
+                {/* Instant Referral Code Claim Box (For users who joined via Telegram Start and didn't get tracked automatically) */}
+                {!user.referredBy ? (
+                  <form
+                    onSubmit={handleManualReferralClaim}
+                    className="pt-3 border-t border-amber-500/20 space-y-2"
+                  >
+                    <div className="text-xs font-extrabold text-amber-300 flex items-center gap-1.5">
+                      <UserPlus className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>কারো লিংকে এসেছেন? বন্ধুর রেফার কোড বসান (+৳{config.referredJoinBonus || 20} বোনাস):</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={manualRefInput}
+                        onChange={(e) => setManualRefInput(e.target.value)}
+                        placeholder="যেমন: JMJ123456 বা ইউজার আইডি"
+                        className="flex-1 min-w-0 rounded-xl px-3.5 py-2.5 text-xs font-mono-num font-bold outline-none border bg-[#170b28] border-amber-500/35 text-amber-50"
+                      />
+                      <button
+                        type="submit"
+                        disabled={claimingManualRef}
+                        className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-rose-600 text-white text-xs font-extrabold cursor-pointer whitespace-nowrap shrink-0"
+                      >
+                        {claimingManualRef ? 'যাচাই...' : 'বোনাস নিন'}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="pt-2 border-t border-amber-500/15 text-[11px] text-amber-400/90 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>রেফার সংযুক্ত আছে (রেফারকারী: #{String(user.referredBy).slice(-6)})</span>
+                  </div>
+                )}
               </div>
 
               {/* REFERRAL GIVEAWAY CARD */}
@@ -1132,11 +1518,11 @@ export default function App() {
                   </span>
                 </div>
 
-                <div className="text-2xl font-extrabold font-mono-num text-amber-500 my-1">
+                <div className="text-2xl font-extrabold font-mono-num text-amber-400 my-1">
                   ৳{config.giveawayPrizePool.toLocaleString('en-US')} BDT
                 </div>
-                <p className="text-xs opacity-80 truncate">
-                  সেরা রেফারকারীদের জন্য পুরস্কার — লিডারবোর্ড দেখুন →
+                <p className="text-xs opacity-85">
+                  {config.giveawayRuleShortText || 'সবথেকে বেশি রেফার করে টপ ১০-এ থাকলেই পাবেন এই গিভয়ে পুরস্কার!'}
                 </p>
               </div>
             </div>
@@ -1147,6 +1533,9 @@ export default function App() {
           ========================================================= */}
           {activePage === 'tasks' && (
             <div className="space-y-4 animate-fadeIn">
+              {/* TOP PROMINENT OFFICIAL CHANNEL BANNER (https://t.me/jmjads) */}
+              {renderProminentOfficialChannelBanner()}
+
               <div className={`rounded-3xl p-5 glass-reflect ${heroPrism}`}>
                 <div className="flex items-center gap-2 text-xs font-semibold opacity-90">
                   <Zap className="w-4 h-4 text-amber-400 shrink-0" />
@@ -1172,12 +1561,12 @@ export default function App() {
 
               <div className={`rounded-2xl p-4 flex items-start gap-3 ${cardSurface}`}>
                 <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500 shrink-0 mt-0.5">
-                  <HelpCircle className="w-4 h-4" />
+                  <ShieldAlert className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <h4 className="text-xs font-extrabold">কাজের নিয়ম</h4>
+                  <h4 className="text-xs font-extrabold text-amber-400">টেলিগ্রাম অটো-ভেরিফিকেশন সিস্টেম</h4>
                   <p className="text-xs opacity-80 mt-1 leading-relaxed">
-                    টাস্ক ওপেন করে সাবস্ক্রাইব/ভিডিও দেখুন এবং নির্ধারিত সময় পর <b>চেক ও ক্লেইম</b> চাপুন।
+                    চ্যানেল সাবস্ক্রাইব না করে ক্লেইম চাপলে টেলিগ্রাম অ্যালার্ট দিবে এবং বোনাস ব্লক হবে।
                   </p>
                 </div>
               </div>
@@ -1198,9 +1587,7 @@ export default function App() {
                     className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer transition-all ${
                       taskFilter === tab.id
                         ? 'bg-gradient-to-r from-amber-500 to-rose-600 text-white shadow-md shadow-amber-500/25'
-                        : isDark
-                        ? 'bg-[#1a0f2e] text-amber-100/75 border border-amber-500/20'
-                        : 'bg-white text-amber-950 border border-amber-600/20'
+                        : 'bg-[#1a0f2e] text-amber-100/75 border border-amber-500/20'
                     }`}
                   >
                     {tab.label}
@@ -1213,9 +1600,7 @@ export default function App() {
                 <div className={`rounded-3xl p-8 text-center space-y-2 ${cardSurface}`}>
                   <ListChecks className="w-9 h-9 text-amber-500/60 mx-auto" />
                   <div className="text-sm font-extrabold">বর্তমানে কোনো টাস্ক নেই</div>
-                  <p className="text-xs opacity-70">
-                    নতুন টাস্ক যুক্ত হলে এখানে সাথে সাথে দেখতে পাবেন।
-                  </p>
+                  <p className="text-xs opacity-70">নতুন টাস্ক যুক্ত হলে এখানে সাথে সাথে দেখতে পাবেন।</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1289,11 +1674,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => handleOpenTask(task)}
-                            className={`py-3 px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 border cursor-pointer transition-all whitespace-nowrap ${
-                              isDark
-                                ? 'bg-white/5 border-amber-500/25 text-amber-100 hover:bg-white/10'
-                                : 'bg-amber-50 border-amber-600/25 text-amber-950 hover:bg-amber-100'
-                            }`}
+                            className="py-3 px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 border cursor-pointer transition-all whitespace-nowrap bg-white/5 border-amber-500/25 text-amber-100 hover:bg-white/10"
                           >
                             <ExternalLink className="w-3.5 h-3.5 shrink-0 text-amber-500" />
                             <span>
@@ -1317,8 +1698,8 @@ export default function App() {
                           ) : activeCountdown > 0 ? (
                             <button
                               type="button"
-                              disabled
-                              className="py-3 px-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-400 font-mono-num font-bold text-xs flex items-center justify-center gap-1.5 cursor-not-allowed whitespace-nowrap"
+                              onClick={() => handleVerifyAndClaimTask(task)}
+                              className="py-3 px-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-400 font-mono-num font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
                             >
                               <Clock className="w-3.5 h-3.5 shrink-0 animate-spin" />
                               <span>অপেক্ষা ({activeCountdown}s)</span>
@@ -1327,10 +1708,10 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => handleVerifyAndClaimTask(task)}
-                              className="py-3 px-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 opacity-70 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                              className="py-3 px-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 opacity-80 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
                             >
                               <Lock className="w-3.5 h-3.5 shrink-0" />
-                              <span>লক করা আছে</span>
+                              <span>চেক ও ক্লেইম</span>
                             </button>
                           ) : (
                             <button
@@ -1353,18 +1734,21 @@ export default function App() {
           )}
 
           {/* =========================================================
-              PAGE 3: MONETAG ADS WATCH
+              PAGE 3: MONETAG ADS WATCH (10 Ads Every 2 Hours)
           ========================================================= */}
           {activePage === 'ads' && (
             <div className="space-y-4 animate-fadeIn">
+              {/* TOP PROMINENT OFFICIAL CHANNEL BANNER (https://t.me/jmjads) */}
+              {renderProminentOfficialChannelBanner()}
+
               <div className={`rounded-3xl p-5 ${cardSurface}`}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2 text-xs font-extrabold">
                     <ListChecks className="w-4 h-4 text-amber-500 shrink-0" />
-                    <span>আজকের অ্যাড প্রগ্রেস</span>
+                    <span>চলতি স্লটের অ্যাড প্রগ্রেস ({config.adBatchCooldownHours} ঘণ্টা পর পর)</span>
                   </div>
-                  <span className="text-sm font-extrabold font-mono-num text-amber-500">
-                    {user.todayAdsWatched} / {config.dailyAdLimit}
+                  <span className="text-sm font-extrabold font-mono-num text-amber-400">
+                    {currentBatchWatched} / {batchLimit}
                   </span>
                 </div>
 
@@ -1372,19 +1756,30 @@ export default function App() {
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-amber-400 via-rose-500 to-purple-500 transition-all duration-500"
                     style={{
-                      width: `${Math.min(100, (user.todayAdsWatched / config.dailyAdLimit) * 100)}%`,
+                      width: `${Math.min(100, (currentBatchWatched / batchLimit) * 100)}%`,
                     }}
                   />
                 </div>
 
-                <p className="text-xs opacity-80 text-center truncate">
-                  আজ আর{' '}
-                  <b className="text-amber-500 font-mono-num">
-                    {Math.max(0, config.dailyAdLimit - user.todayAdsWatched)}টি
-                  </b>{' '}
-                  বাকি · প্রতি অ্যাড{' '}
-                  <b className="text-amber-500 font-mono-num">৳{config.adReward} BDT</b>
-                </p>
+                {isBatchLocked ? (
+                  <div className="p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-center">
+                    <div className="text-xs font-bold text-rose-300">
+                      এই স্লটের {batchLimit}টি অ্যাড সম্পন্ন হয়েছে! পরবর্তী {batchLimit}টি অ্যাড খুলবে:
+                    </div>
+                    <div className="text-base font-extrabold font-mono-num text-amber-400 mt-1">
+                      ⏳ {formatCountdownHMS(batchRemainingSeconds)}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs opacity-80 text-center truncate">
+                    এই স্লটে আর{' '}
+                    <b className="text-amber-400 font-mono-num">
+                      {Math.max(0, batchLimit - currentBatchWatched)}টি
+                    </b>{' '}
+                    অ্যাড বাকি · প্রতি অ্যাড{' '}
+                    <b className="text-amber-400 font-mono-num">৳{config.adReward} BDT</b>
+                  </p>
+                )}
               </div>
 
               <div className={`rounded-3xl p-6 space-y-4 glass-reflect ${heroPrism}`}>
@@ -1394,7 +1789,9 @@ export default function App() {
                   </div>
                   <div className="min-w-0">
                     <h3 className="text-lg font-extrabold truncate">বিজ্ঞাপন দেখুন (Monetag)</h3>
-                    <p className="text-xs opacity-85 truncate">বিজ্ঞাপন দেখে সাথে সাথে আয় করুন</p>
+                    <p className="text-xs opacity-85 truncate">
+                      প্রতি {config.adBatchCooldownHours} ঘণ্টা পর পর {batchLimit}টি করে বিজ্ঞাপন দেখুন
+                    </p>
                   </div>
                 </div>
 
@@ -1409,39 +1806,19 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleStartWatchMonetagAd}
-                  disabled={adCooldown > 0 || user.todayAdsWatched >= config.dailyAdLimit}
+                  disabled={adCooldown > 0 || isBatchLocked}
                   className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-rose-500 text-[#14081f] font-extrabold text-sm shadow-xl shadow-amber-500/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98] transition-transform whitespace-nowrap"
                 >
                   <Play className="w-4 h-4 fill-current shrink-0" />
                   <span>
-                    {user.todayAdsWatched >= config.dailyAdLimit
-                      ? 'আজকের কোটা সম্পন্ন হয়েছে'
+                    {isBatchLocked
+                      ? `পরবর্তী স্লট (${formatCountdownHMS(batchRemainingSeconds)})`
                       : adCooldown > 0
                       ? `অপেক্ষা করুন (${adCooldown}s)...`
                       : `বিজ্ঞাপন দেখুন (+৳${config.adReward})`}
                   </span>
                 </button>
               </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setTaskFilter('all');
-                  setActivePage('tasks');
-                }}
-                className={`w-full rounded-3xl p-4 flex items-center justify-between gap-3 text-left cursor-pointer ${cardSurface}`}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-11 h-11 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500 shrink-0">
-                    <ListChecks className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-extrabold truncate">টেলিগ্রাম ও ইউটিউব টাস্ক</div>
-                    <div className="text-xs opacity-75 truncate">চ্যানেল জয়েন ও সাবস্ক্রাইব করে বোনাস নিন</div>
-                  </div>
-                </div>
-                <ChevronRight className="w-5 h-5 opacity-60 shrink-0" />
-              </button>
             </div>
           )}
 
@@ -1461,14 +1838,19 @@ export default function App() {
                   <span>রেফার গিভয়ে</span>
                 </h2>
 
-                <div className="text-3xl font-extrabold font-mono-num text-amber-400 my-3">
+                <div className="text-3xl font-extrabold font-mono-num text-amber-400 my-2.5">
                   ৳{config.giveawayPrizePool.toLocaleString('en-US')} <span className="text-base">BDT</span>
+                </div>
+
+                {/* Single concise notice requested by user */}
+                <div className="px-3.5 py-2.5 rounded-2xl bg-amber-500/15 border border-amber-400/35 text-xs font-extrabold text-amber-200 mb-3">
+                  🏆 {config.giveawayRuleShortText || 'সবথেকে বেশি রেফার করে টপ ১০-এ থাকলেই পাবেন এই গিভয়ে পুরস্কার!'}
                 </div>
 
                 <div className="grid grid-cols-3 gap-2.5">
                   <div className={`rounded-2xl p-2.5 ${innerGlassStat}`}>
                     <div className="text-sm font-extrabold text-amber-400 font-mono-num whitespace-nowrap">টপ ১০</div>
-                    <div className="text-[10px] opacity-80 whitespace-nowrap mt-0.5">বিজয়ী</div>
+                    <div className="text-[10px] opacity-80 whitespace-nowrap mt-0.5">সর্বোচ্চ রেফারকারী</div>
                   </div>
                   <div className={`rounded-2xl p-2.5 ${innerGlassStat}`}>
                     <div className="text-sm font-extrabold text-rose-400 font-mono-num whitespace-nowrap">
@@ -1478,66 +1860,19 @@ export default function App() {
                   </div>
                   <div className={`rounded-2xl p-2.5 ${innerGlassStat}`}>
                     <div className="text-sm font-extrabold text-purple-300 font-mono-num whitespace-nowrap">
-                      {config.dailyAdLimit}/দিন
+                      {user.referralCount} জন
                     </div>
-                    <div className="text-[10px] opacity-80 whitespace-nowrap mt-0.5">দৈনিক কোটা</div>
+                    <div className="text-[10px] opacity-80 whitespace-nowrap mt-0.5">আপনার রেফার</div>
                   </div>
                 </div>
               </div>
 
-              {/* User's Eligibility Card */}
-              <div className={`rounded-3xl p-5 space-y-3.5 ${cardSurface}`}>
-                <div className="text-xs font-extrabold flex items-center gap-2">
-                  <Users className="w-4 h-4 text-amber-500 shrink-0" />
-                  <span>আপনার অবস্থান ও যোগ্যতা</span>
-                </div>
-
-                <div className="flex items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex flex-col items-center justify-center shrink-0">
-                    <span className="text-sm font-extrabold font-mono-num text-amber-500">
-                      {leaderboard.find((r) => r.isCurrentUser)?.rank
-                        ? `#${leaderboard.find((r) => r.isCurrentUser)?.rank}`
-                        : '—'}
-                    </span>
-                    <span className="text-[9px] opacity-70">র‍্যাঙ্ক</span>
-                  </div>
-
-                  <div className="min-w-0">
-                    <div className="text-xs font-extrabold truncate">
-                      {user.todayAdsWatched >= config.dailyAdLimit && user.referralCount >= 1
-                        ? '✅ আপনি গিভয়েতে যোগ্য আছেন!'
-                        : '⏳ আজকের কোটা এখনো পূর্ণ হয়নি'}
-                    </div>
-                    <p className="text-xs opacity-75 mt-0.5 truncate">
-                      আপনার মোট রেফার: <b className="text-amber-500 font-mono-num">{user.referralCount} জন</b>
-                    </p>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span>আজকের অ্যাডস ভিউ কোটা</span>
-                    <span className="font-mono-num font-bold text-amber-500">
-                      {user.todayAdsWatched} / {config.dailyAdLimit}
-                    </span>
-                  </div>
-                  <div className="w-full h-2.5 rounded-full bg-amber-500/20 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-amber-500 to-rose-500 transition-all"
-                      style={{
-                        width: `${Math.min(100, (user.todayAdsWatched / config.dailyAdLimit) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* REAL FIREBASE LIVE LEADERBOARD */}
+              {/* REAL FIREBASE LIVE LEADERBOARD (Top 10) */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between px-1">
                   <h3 className="text-sm font-extrabold flex items-center gap-2">
                     <Trophy className="w-4 h-4 text-amber-500 shrink-0" />
-                    <span>লাইভ লিডারবোর্ড</span>
+                    <span>টপ ১০ রেফার লিডারবোর্ড</span>
                   </h3>
                   <span className="text-xs text-amber-500 font-bold">● Live</span>
                 </div>
@@ -1578,7 +1913,7 @@ export default function App() {
                         </div>
 
                         <div className="text-right shrink-0">
-                          <div className="text-xs font-extrabold font-mono-num text-amber-500 whitespace-nowrap">
+                          <div className="text-xs font-extrabold font-mono-num text-amber-400 whitespace-nowrap">
                             {entry.referrals} রেফার
                           </div>
                           <div className="text-[11px] font-mono-num font-bold opacity-80 whitespace-nowrap">
@@ -1618,34 +1953,6 @@ export default function App() {
                 </div>
               </div>
 
-              <div className={`rounded-3xl p-4 space-y-2.5 ${cardSurface}`}>
-                <div className="flex items-center justify-between text-xs font-bold">
-                  <span>আজকের বিজ্ঞাপন ভিউ</span>
-                  <span className="font-mono-num text-amber-500">
-                    {user.todayAdsWatched} / {config.dailyAdLimit}
-                  </span>
-                </div>
-
-                <div className="w-full h-2.5 rounded-full bg-amber-500/20 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-amber-500 to-rose-500 transition-all"
-                    style={{
-                      width: `${Math.min(100, (user.todayAdsWatched / config.dailyAdLimit) * 100)}%`,
-                    }}
-                  />
-                </div>
-
-                {user.todayAdsWatched < config.dailyAdLimit ? (
-                  <p className="text-xs text-amber-500 truncate">
-                    উইথড্র করতে আজকের আরও {config.dailyAdLimit - user.todayAdsWatched}টি বিজ্ঞাপন দেখুন।
-                  </p>
-                ) : (
-                  <p className="text-xs text-amber-400 font-bold truncate">
-                    ✅ আজকের বিজ্ঞাপন দেখার শর্ত পূর্ণ হয়েছে!
-                  </p>
-                )}
-              </div>
-
               <form onSubmit={handleWithdrawSubmit} className={`rounded-3xl p-5 space-y-4 ${cardSurface}`}>
                 <h3 className="text-sm font-extrabold flex items-center gap-2">
                   <Send className="w-4 h-4 text-amber-500 shrink-0" />
@@ -1657,11 +1964,7 @@ export default function App() {
                   <select
                     value={wdMethod}
                     onChange={(e) => setWdMethod(e.target.value as typeof wdMethod)}
-                    className={`w-full rounded-2xl px-4 py-3 text-xs font-bold outline-none border ${
-                      isDark
-                        ? 'bg-[#170b28] border-amber-500/30 text-amber-50'
-                        : 'bg-white border-amber-600/30 text-[#1c1026]'
-                    }`}
+                    className="w-full rounded-2xl px-4 py-3 text-xs font-bold outline-none border bg-[#170b28] border-amber-500/30 text-amber-50"
                   >
                     <option value="bKash">bKash (বিকাশ পার্সোনাল)</option>
                     <option value="Nagad">Nagad (নগদ পার্সোনাল)</option>
@@ -1678,11 +1981,7 @@ export default function App() {
                     value={wdAccount}
                     onChange={(e) => setWdAccount(e.target.value)}
                     placeholder="01XXXXXXXXX"
-                    className={`w-full rounded-2xl px-4 py-3 text-xs font-mono-num font-bold outline-none border ${
-                      isDark
-                        ? 'bg-[#170b28] border-amber-500/30 text-amber-50'
-                        : 'bg-white border-amber-600/30 text-[#1c1026]'
-                    }`}
+                    className="w-full rounded-2xl px-4 py-3 text-xs font-mono-num font-bold outline-none border bg-[#170b28] border-amber-500/30 text-amber-50"
                   />
                 </div>
 
@@ -1694,11 +1993,7 @@ export default function App() {
                     value={wdAmount}
                     onChange={(e) => setWdAmount(e.target.value)}
                     placeholder={`ন্যূনতম ${config.minWithdraw} BDT`}
-                    className={`w-full rounded-2xl px-4 py-3 text-xs font-mono-num font-bold outline-none border ${
-                      isDark
-                        ? 'bg-[#170b28] border-amber-500/30 text-amber-50'
-                        : 'bg-white border-amber-600/30 text-[#1c1026]'
-                    }`}
+                    className="w-full rounded-2xl px-4 py-3 text-xs font-mono-num font-bold outline-none border bg-[#170b28] border-amber-500/30 text-amber-50"
                   />
                 </div>
 
@@ -1757,35 +2052,28 @@ export default function App() {
           ========================================================= */}
           {activePage === 'support' && (
             <div className="space-y-4 animate-fadeIn">
+              {/* TOP PROMINENT OFFICIAL CHANNEL BANNER (https://t.me/jmjads) */}
+              {renderProminentOfficialChannelBanner()}
+
               <div className={`rounded-3xl p-5 space-y-4 ${cardSurface}`}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-500 shrink-0">
                     <Play className="w-5 h-5 fill-current" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-sm font-extrabold truncate">টিউটোরিয়াল ভিডিও</h3>
+                    <h3 className="text-sm font-extrabold truncate">অফিশিয়াল চ্যানেল ও গাইডলাইন</h3>
                     <p className="text-xs opacity-75 truncate">কিভাবে কাজ ও উত্তোলন করবেন দেখুন</p>
                   </div>
                 </div>
 
-                <div className="rounded-2xl p-5 hero-prism-dark text-white text-center relative overflow-hidden glass-reflect border border-amber-400/30">
-                  <div className="w-12 h-12 rounded-2xl bg-rose-600 flex items-center justify-center mx-auto mb-2.5 shadow-xl shadow-rose-600/40">
-                    <Play className="w-6 h-6 fill-current text-white ml-0.5" />
-                  </div>
-                  <div className="text-base font-extrabold truncate">{config.siteName} — অফিশিয়াল গাইডলাইন</div>
-                  <p className="text-xs text-amber-200/80 mt-1 truncate">
-                    কাজ করুন · ইনকাম করুন · দ্রুত পেমেন্ট নিন
-                  </p>
-                </div>
-
                 <a
-                  href={config.tutorialVideoUrl}
+                  href={config.tutorialVideoUrl || 'https://t.me/jmjads'}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 whitespace-nowrap"
                 >
-                  <Play className="w-4 h-4 fill-current shrink-0" />
-                  <span>ইউটিউবে খুলুন</span>
+                  <ExternalLink className="w-4 h-4 shrink-0" />
+                  <span>অফিশিয়াল টিউটোরিয়াল ও চ্যানেল খুলুন</span>
                 </a>
               </div>
 
@@ -1793,13 +2081,28 @@ export default function App() {
                 <h3 className="text-xs font-extrabold px-1">যোগাযোগ মাধ্যম</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <a
-                    href={`https://t.me/${config.supportTelegram.replace('@', '')}`}
+                    href={config.officialChannelUrl || 'https://t.me/jmjads'}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`rounded-2xl p-4 text-center flex flex-col items-center gap-1.5 ${cardSurface}`}
                   >
                     <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500">
                       <Send className="w-4 h-4" />
+                    </div>
+                    <div className="text-xs font-extrabold whitespace-nowrap">অফিশিয়াল চ্যানেল</div>
+                    <div className="text-[11px] opacity-70 font-mono-num truncate max-w-full">
+                      t.me/jmjads
+                    </div>
+                  </a>
+
+                  <a
+                    href={`https://t.me/${(config.supportTelegram || '@jmjads').replace('@', '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`rounded-2xl p-4 text-center flex flex-col items-center gap-1.5 ${cardSurface}`}
+                  >
+                    <div className="w-10 h-10 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                      <HelpCircle className="w-4 h-4" />
                     </div>
                     <div className="text-xs font-extrabold whitespace-nowrap">টেলিগ্রাম সাপোর্ট</div>
                     <div className="text-[11px] opacity-70 font-mono-num truncate max-w-full">
@@ -1853,36 +2156,12 @@ export default function App() {
                   )}
                 </div>
               </div>
-
-              <div className="space-y-2.5">
-                <h3 className="text-xs font-extrabold px-1">সাধারণ প্রশ্ন (FAQ)</h3>
-
-                <div className={`rounded-2xl p-4 ${cardSurface}`}>
-                  <div className="text-xs font-extrabold text-amber-500">নিয়ম মেনে কাজ করুন</div>
-                  <p className="text-xs opacity-80 mt-1 leading-relaxed">
-                    VPN ব্যবহার করবেন না এবং চ্যানেল সাবস্ক্রাইব না করে ক্লেইম চাপবেন না।
-                  </p>
-                </div>
-
-                <div className={`rounded-2xl p-4 ${cardSurface}`}>
-                  <div className="text-xs font-extrabold text-amber-500">কখন পেমেন্ট পাবেন?</div>
-                  <p className="text-xs opacity-80 mt-1 leading-relaxed">
-                    রিকোয়েস্ট করার পর সর্বোচ্চ ২৪ ঘণ্টার মধ্যে পেমেন্ট সম্পন্ন করা হয়।
-                  </p>
-                </div>
-              </div>
             </div>
           )}
         </main>
 
         {/* SMOOTH 6-TAB BOTTOM NAVIGATION BAR */}
-        <nav
-          className={`fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[500px] z-40 px-2 py-2 backdrop-blur-2xl border-t grid grid-cols-6 items-center transition-colors ${
-            isDark
-              ? 'bg-[#0b0613]/92 border-amber-500/20'
-              : 'bg-white/95 border-amber-600/20 shadow-lg'
-          }`}
-        >
+        <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[500px] z-40 px-2 py-2 backdrop-blur-2xl border-t grid grid-cols-6 items-center bg-[#0b0613]/92 border-amber-500/20">
           {[
             { id: 'home', label: 'হোম', icon: Home },
             { id: 'tasks', label: 'টাস্ক', icon: ListChecks },
@@ -1923,7 +2202,7 @@ export default function App() {
         rewardAmount={adModalState.reward}
         durationSeconds={5}
         purposeLabel={adModalState.purpose}
-        isDark={isDark}
+        isDark={true}
         onSuccess={() => {
           const cb = adModalState.onCompleteCallback;
           setAdModalState((prev) => ({ ...prev, open: false }));
@@ -1937,14 +2216,12 @@ export default function App() {
 
       <NoticeModal
         isOpen={noticeOpen}
-        isDark={isDark}
         config={config}
         onClose={() => setNoticeOpen(false)}
       />
 
       <BonusAndPromoModal
         isOpen={bonusModalOpen}
-        isDark={isDark}
         user={user}
         onClaimStreak={(bonusAmount) => {
           creditUserReward(bonusAmount, 'daily_streak', `ডেইলি চেক-ইন বোনাস (Day ${user.streakDays + 1})`, {
@@ -1953,25 +2230,7 @@ export default function App() {
           });
           showToast(`ডেইলি চেক-ইন বোনাস +৳${bonusAmount} যোগ হয়েছে!`);
         }}
-        onRedeemPromo={(code) => {
-          const clean = code.toUpperCase();
-          if (user.redeemedPromoCodes.includes(clean)) {
-            showToast('আপনি ইতিমধ্যে এই কোডটি ব্যবহার করেছেন!');
-            return;
-          }
-          const found = promoCodes.find((p) => p.code === clean && p.active);
-          if (!found || found.usedCount >= found.maxUses) {
-            showToast('ভুল অথবা মেয়াদোত্তীর্ণ প্রোমো কোড!');
-            return;
-          }
-          setPromoCodes((prev) =>
-            prev.map((p) => (p.code === clean ? { ...p, usedCount: p.usedCount + 1 } : p))
-          );
-          creditUserReward(found.reward, 'promo_code', `প্রোমো কোড (${clean}) বোনাস`, {
-            redeemedPromoCodes: [...user.redeemedPromoCodes, clean],
-          });
-          showToast(`প্রোমো কোড সফল! +৳${found.reward} BDT যোগ হয়েছে`);
-        }}
+        onRedeemPromo={(code) => handleRedeemPromoCode(code)}
         onClose={() => setBonusModalOpen(false)}
       />
     </div>

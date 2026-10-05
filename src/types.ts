@@ -10,8 +10,8 @@ export interface TaskItem {
   taskType: TaskActionType;
   reward: number;
   url: string;
-  channelUsername?: string; // e.g. @JMJAds_Official for Telegram subscription check
-  requiredSeconds: number; // minimum time user must spend before claiming
+  channelUsername?: string; // e.g. @jmjads for Telegram subscription check
+  requiredSeconds: number;
   frequency: 'once' | 'daily';
   requireMonetagAd: boolean;
   active: boolean;
@@ -22,7 +22,7 @@ export interface TaskVerificationState {
   taskId: string;
   openedAt: number | null;
   elapsedSeconds: number;
-  telegramSubscribed: boolean; // Verified via Telegram Bot API or In-App Channel Bot check
+  telegramSubscribed: boolean;
   unlockedToClaim: boolean;
   claimedCount: number;
   lastClaimedDate: string | null;
@@ -31,7 +31,15 @@ export interface TaskVerificationState {
 export interface TransactionItem {
   id: string;
   userId: string;
-  type: 'ad_reward' | 'task_reward' | 'referral' | 'withdraw' | 'welcome' | 'daily_streak' | 'spin_wheel' | 'promo_code';
+  type:
+    | 'ad_reward'
+    | 'task_reward'
+    | 'referral'
+    | 'withdraw'
+    | 'welcome'
+    | 'daily_streak'
+    | 'promo_code'
+    | 'channel_bonus';
   amount: number;
   description: string;
   createdAt: string;
@@ -59,17 +67,14 @@ export interface LeaderboardEntry {
   isCurrentUser?: boolean;
 }
 
-export interface DisqualifiedEntry {
-  userTag: string;
-  reason: string;
-}
-
 export interface PromoCode {
   code: string;
   reward: number;
+  rewardTitle?: string;
   maxUses: number;
   usedCount: number;
   active: boolean;
+  createdAt?: string;
 }
 
 export interface UserProfile {
@@ -77,6 +82,8 @@ export interface UserProfile {
   firstName: string;
   lastName: string;
   username: string;
+  referralCode: string;
+  referredBy: string | null;
   isVerifiedPublisher: boolean;
   multiplier2x: boolean;
   balance: number;
@@ -85,13 +92,15 @@ export interface UserProfile {
   totalEarned: number;
   totalWithdrawn: number;
   referralCount: number;
+  batchAdsWatched: number; // Ads watched in the current 2-hour batch (max 10)
+  batchCycleStartAt: number; // Timestamp when current 2-hour batch started / locked
   todayAdsWatched: number;
   totalAdsWatched: number;
+  officialChannelClaimed: boolean;
   completedGiveawayDays: number;
   missedGiveawayDays: number;
   streakDays: number;
   lastStreakDate: string | null;
-  spinsUsedToday: number;
   redeemedPromoCodes: string[];
   todayDateKey: string;
 }
@@ -99,21 +108,29 @@ export interface UserProfile {
 export interface AppConfig {
   siteName: string;
   tagline: string;
+  officialChannelUrl: string;
+  officialChannelUsername: string;
+  officialChannelReward: number;
   monetagZoneId: string;
   monetagSdkFunc: string;
   adReward: number;
-  dailyAdLimit: number;
+  adsPerBatchLimit: number; // 10 ads per batch
+  adBatchCooldownHours: number; // 2 hours interval
   adCooldownSeconds: number;
   referralBonus: number;
+  referredJoinBonus: number;
   welcomeBonus: number;
   minWithdraw: number;
   requiredReferralsForWithdraw: number;
   requireDailyAdsForWithdraw: boolean;
   telegramBotToken: string;
   telegramBotUsername: string;
+  telegramMiniAppShortName: string;
+  webAppHostUrl: string;
   giveawayPrizePool: number;
   giveawayDaysLeft: number;
   giveawayDateRange: string;
+  giveawayRuleShortText: string;
   supportTelegram: string;
   supportEmail: string;
   supportWhatsapp: string;

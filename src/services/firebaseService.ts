@@ -1,5 +1,11 @@
 import { AppConfig, LeaderboardEntry, PromoCode, TaskItem, TransactionItem, UserProfile, WithdrawRequest } from '../types';
-import { DEFAULT_CONFIG, getBangladeshDateKey, getRealTelegramUser } from '../store/initialData';
+import {
+  DEFAULT_CONFIG,
+  INITIAL_TASKS,
+  generateShortReferCode,
+  getBangladeshDateKey,
+  getRealTelegramUser,
+} from '../store/initialData';
 
 // Firebase config from user's Telegram Mini App project
 export const FIREBASE_CONFIG = {
@@ -86,7 +92,7 @@ export function subscribeToAppConfig(onUpdate: (cfg: AppConfig) => void): () => 
   };
 }
 
-// Subscribe to Real Tasks from Firestore + localStorage
+// Subscribe to Real Tasks from Firestore + localStorage (always ensuring official @jmjads channel is present)
 export function subscribeToTasks(onUpdate: (tasks: TaskItem[]) => void): () => void {
   const db = getFirestoreDb();
   const handleStorage = (e: StorageEvent) => {
@@ -108,8 +114,14 @@ export function subscribeToTasks(onUpdate: (tasks: TaskItem[]) => void): () => v
             list.push({ id: doc.id, ...(doc.data() as Omit<TaskItem, 'id'>) });
           });
           list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-          localStorage.setItem('jmj_ads_tasks_v3', JSON.stringify(list));
-          onUpdate(list);
+
+          const hasOfficial = list.some(
+            (t) => t.id === 'official_jmjads_channel' || t.url?.toLowerCase().includes('t.me/jmjads')
+          );
+          const finalTasks = hasOfficial ? list : [...INITIAL_TASKS, ...list];
+
+          localStorage.setItem('jmj_ads_tasks_v3', JSON.stringify(finalTasks));
+          onUpdate(finalTasks);
         },
         () => {}
       );
@@ -125,6 +137,15 @@ export function subscribeToTasks(onUpdate: (tasks: TaskItem[]) => void): () => v
 // Subscribe to Promo Codes from Firestore + localStorage
 export function subscribeToPromos(onUpdate: (promos: PromoCode[]) => void): () => void {
   const db = getFirestoreDb();
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === 'jmj_ads_promos_v3' && e.newValue) {
+      try {
+        onUpdate(JSON.parse(e.newValue));
+      } catch {}
+    }
+  };
+  window.addEventListener('storage', handleStorage);
+
   let unsubFirestore: (() => void) | null = null;
   if (db) {
     try {
@@ -142,8 +163,26 @@ export function subscribeToPromos(onUpdate: (promos: PromoCode[]) => void): () =
     } catch {}
   }
   return () => {
+    window.removeEventListener('storage', handleStorage);
     if (unsubFirestore) unsubFirestore();
   };
+}
+
+// Increment Promo Code usage count in Firestore
+export async function incrementPromoUsageInFirestore(code: string) {
+  const db = getFirestoreDb();
+  const fv = getFieldValue();
+  if (!db) return;
+  try {
+    await db
+      .collection('jmj_promos')
+      .doc(code)
+      .update({
+        usedCount: fv ? fv.increment(1) : 1,
+      });
+  } catch (e) {
+    console.warn('Promo usage update warning:', e);
+  }
 }
 
 // Initialize & Sync Real User Profile with Firestore `users/{uid}`
@@ -155,6 +194,7 @@ export async function initAndSyncRealUser(
   const fv = getFieldValue();
   const tgUser = getRealTelegramUser();
   const userId = tgUser.id;
+  const shortCode = generateShortReferCode(userId);
   const today = getBangladeshDateKey();
 
   if (!db) {
@@ -171,6 +211,8 @@ export async function initAndSyncRealUser(
         firstName: tgUser.firstName,
         lastName: tgUser.lastName,
         username: tgUser.username,
+        referralCode: shortCode,
+        referredBy: null,
         isVerifiedPublisher: true,
         multiplier2x: true,
         balance: config.welcomeBonus,
@@ -179,17 +221,17 @@ export async function initAndSyncRealUser(
         totalEarned: config.welcomeBonus,
         totalWithdrawn: 0,
         referralCount: 0,
-        referralCode: userId,
-        referredBy: null,
+        batchAdsWatched: 0,
+        batchCycleStartAt: 0,
         todayAds: 0,
         todayAdsWatched: 0,
         adsWatched: 0,
         totalAdsWatched: 0,
+        officialChannelClaimed: false,
         completedGiveawayDays: 0,
         missedGiveawayDays: 0,
         streakDays: 0,
         lastStreakDate: null,
-        spinsUsedToday: 0,
         redeemedPromoCodes: [],
         todayKey: today,
         todayDateKey: today,
@@ -208,26 +250,51 @@ export async function initAndSyncRealUser(
         });
       }
 
-      // Check if user came via referral link (e.g. ref_123456)
+      // Check if user came via referral link (e.g. ?ref=123456 or startapp=ref_123456)
       if (tgUser.startParam) {
-        const refId = tgUser.startParam.replace(/^ref_/, '').trim();
-        if (refId && refId !== userId) {
-          await applyRealReferral(db, fv, userId, refId, config.referralBonus);
+        const refInput = tgUser.startParam.replace(/^ref_/, '').trim();
+        if (refInput && refInput !== userId && refInput.toUpperCase() !== shortCode) {
+          await claimReferralByCodeOrId(
+            userId,
+            refInput,
+            config.referralBonus,
+            config.referredJoinBonus || 0
+          );
         }
       }
     } else {
       const existing = snap.data() || {};
       const savedDay = existing.todayDateKey || existing.todayKey;
+      const updates: Record<string, unknown> = {};
+
+      if (!existing.referralCode) {
+        updates.referralCode = shortCode;
+      }
+
       if (savedDay !== today) {
-        await userRef.update({
-          todayAds: 0,
-          todayAdsWatched: 0,
-          todayEarned: 0,
-          spinsUsedToday: 0,
-          todayKey: today,
-          todayDateKey: today,
-          updatedAt: fv ? fv.serverTimestamp() : new Date().toISOString(),
-        });
+        updates.todayAds = 0;
+        updates.todayAdsWatched = 0;
+        updates.todayEarned = 0;
+        updates.todayKey = today;
+        updates.todayDateKey = today;
+        updates.updatedAt = fv ? fv.serverTimestamp() : new Date().toISOString();
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await userRef.update(updates);
+      }
+
+      // Also check if an existing user who hasn't been referred yet opened a referral link!
+      if (!existing.referredBy && tgUser.startParam) {
+        const refInput = tgUser.startParam.replace(/^ref_/, '').trim();
+        if (refInput && refInput !== userId && refInput.toUpperCase() !== shortCode) {
+          await claimReferralByCodeOrId(
+            userId,
+            refInput,
+            config.referralBonus,
+            config.referredJoinBonus || 0
+          );
+        }
       }
     }
   } catch (e) {
@@ -243,6 +310,8 @@ export async function initAndSyncRealUser(
         firstName: d.firstName || tgUser.firstName,
         lastName: d.lastName || tgUser.lastName,
         username: d.username || tgUser.username,
+        referralCode: d.referralCode || shortCode,
+        referredBy: d.referredBy || null,
         isVerifiedPublisher: d.isVerifiedPublisher !== false,
         multiplier2x: d.multiplier2x !== false,
         balance: Number(d.balance || 0),
@@ -251,13 +320,15 @@ export async function initAndSyncRealUser(
         totalEarned: Number(d.totalEarned || 0),
         totalWithdrawn: Number(d.totalWithdrawn || 0),
         referralCount: Number(d.referralCount || 0),
+        batchAdsWatched: Number(d.batchAdsWatched || 0),
+        batchCycleStartAt: Number(d.batchCycleStartAt || 0),
         todayAdsWatched: Number(d.todayAdsWatched ?? d.todayAds ?? 0),
         totalAdsWatched: Number(d.totalAdsWatched ?? d.adsWatched ?? 0),
+        officialChannelClaimed: Boolean(d.officialChannelClaimed),
         completedGiveawayDays: Number(d.completedGiveawayDays || 0),
         missedGiveawayDays: Number(d.missedGiveawayDays || 0),
         streakDays: Number(d.streakDays || 0),
         lastStreakDate: d.lastStreakDate || null,
-        spinsUsedToday: Number(d.spinsUsedToday || 0),
         redeemedPromoCodes: Array.isArray(d.redeemedPromoCodes) ? d.redeemedPromoCodes : [],
         todayDateKey: d.todayDateKey || d.todayKey || today,
       };
@@ -269,35 +340,126 @@ export async function initAndSyncRealUser(
   return unsub;
 }
 
-async function applyRealReferral(
-  db: any,
-  fv: any,
-  newUserId: string,
-  referrerId: string,
-  bonusAmount: number
-) {
+/**
+ * Resolves a referrer by either their Telegram User ID (`123456789`), `ref_123456789`, or Short Code (`JMJ456789`)
+ * and credits the referrer's `referralCount` and `balance` in Firestore.
+ */
+export async function claimReferralByCodeOrId(
+  currentUserId: string,
+  rawCodeOrId: string,
+  referrerBonus: number,
+  inviteeBonus: number = 0
+): Promise<{ ok: boolean; message: string; inviteeBonusAdded?: number }> {
+  const db = getFirestoreDb();
+  const fv = getFieldValue();
+
+  const cleaned = rawCodeOrId
+    .trim()
+    .replace(/^https?:\/\/[^\s]+\?(?:startapp|start|ref)=/i, '')
+    .replace(/^ref_/i, '')
+    .trim();
+
+  if (!cleaned) {
+    return { ok: false, message: 'সঠিক রেফার কোড বা আইডি লিখুন!' };
+  }
+
+  const myShortCode = generateShortReferCode(currentUserId);
+  if (cleaned === currentUserId || cleaned.toUpperCase() === myShortCode) {
+    return { ok: false, message: 'নিজের রেফার কোড নিজে ব্যবহার করা যাবে না!' };
+  }
+
+  if (!db) {
+    return { ok: false, message: 'ডাটাবেস সংযোগ পাওয়া যায়নি!' };
+  }
+
   try {
-    const referrerRef = db.collection('users').doc(referrerId);
-    const userRef = db.collection('users').doc(newUserId);
+    // 1. Check if cleaned is a direct user doc ID
+    let targetReferrerDocId: string | null = null;
+    const directDoc = await db.collection('users').doc(cleaned).get();
+    if (directDoc.exists) {
+      targetReferrerDocId = directDoc.id;
+    } else {
+      // 2. Query by referralCode (e.g. JMJ123456)
+      const qSnap = await db
+        .collection('users')
+        .where('referralCode', '==', cleaned.toUpperCase())
+        .limit(1)
+        .get();
+      if (!qSnap.empty) {
+        targetReferrerDocId = qSnap.docs[0].id;
+      }
+    }
+
+    if (!targetReferrerDocId) {
+      return { ok: false, message: 'এই রেফার কোড বা আইডি খুঁজে পাওয়া যায়নি!' };
+    }
+
+    if (targetReferrerDocId === currentUserId) {
+      return { ok: false, message: 'নিজের রেফার কোড নিজে ব্যবহার করা যাবে না!' };
+    }
+
+    const referrerRef = db.collection('users').doc(targetReferrerDocId);
+    const userRef = db.collection('users').doc(currentUserId);
+
+    let resultStatus = { ok: false, message: 'রেফার ইতিমধ্যে যুক্ত করা হয়েছে!' };
 
     await db.runTransaction(async (transaction: any) => {
       const refSnap = await transaction.get(referrerRef);
       const usrSnap = await transaction.get(userRef);
-      if (!refSnap.exists) return;
-      const usrData = usrSnap.data() || {};
-      if (usrData.referredBy) return;
 
-      transaction.update(userRef, { referredBy: referrerId });
+      if (!refSnap.exists) {
+        resultStatus = { ok: false, message: 'রেফারকারী একাউন্ট পাওয়া যায়নি!' };
+        return;
+      }
+
+      const usrData = usrSnap.exists ? usrSnap.data() || {} : {};
+      if (usrData.referredBy) {
+        resultStatus = { ok: false, message: 'আপনি ইতিমধ্যে একজন রেফারকারীর অধীনে যুক্ত আছেন!' };
+        return;
+      }
+
+      const userPatch: Record<string, unknown> = {
+        referredBy: targetReferrerDocId,
+        updatedAt: fv ? fv.serverTimestamp() : new Date().toISOString(),
+      };
+
+      if (inviteeBonus > 0) {
+        userPatch.balance = fv ? fv.increment(inviteeBonus) : Number(usrData.balance || 0) + inviteeBonus;
+        userPatch.todayEarned = fv
+          ? fv.increment(inviteeBonus)
+          : Number(usrData.todayEarned || 0) + inviteeBonus;
+        userPatch.totalEarned = fv
+          ? fv.increment(inviteeBonus)
+          : Number(usrData.totalEarned || 0) + inviteeBonus;
+      }
+
+      transaction.set(userRef, userPatch, { merge: true });
+
+      const refData = refSnap.data() || {};
       transaction.update(referrerRef, {
-        referralCount: fv ? fv.increment(1) : (refSnap.data()?.referralCount || 0) + 1,
-        balance: fv ? fv.increment(bonusAmount) : (refSnap.data()?.balance || 0) + bonusAmount,
-        referralEarned: fv ? fv.increment(bonusAmount) : (refSnap.data()?.referralEarned || 0) + bonusAmount,
-        totalEarned: fv ? fv.increment(bonusAmount) : (refSnap.data()?.totalEarned || 0) + bonusAmount,
+        referralCount: fv ? fv.increment(1) : Number(refData.referralCount || 0) + 1,
+        balance: fv ? fv.increment(referrerBonus) : Number(refData.balance || 0) + referrerBonus,
+        referralEarned: fv
+          ? fv.increment(referrerBonus)
+          : Number(refData.referralEarned || 0) + referrerBonus,
+        totalEarned: fv ? fv.increment(referrerBonus) : Number(refData.totalEarned || 0) + referrerBonus,
         updatedAt: fv ? fv.serverTimestamp() : new Date().toISOString(),
       });
+
+      resultStatus = {
+        ok: true,
+        message:
+          inviteeBonus > 0
+            ? `রেফার সফল! আপনি +৳${inviteeBonus} ও আপনার বন্ধু +৳${referrerBonus} পেয়েছেন`
+            : `রেফার সফল! আপনার বন্ধুর একাউন্টে +৳${referrerBonus} যোগ হয়েছে`,
+        inviteeBonusAdded: inviteeBonus,
+      };
     });
+
+    return resultStatus;
   } catch (e) {
     console.warn('Referral transaction error:', e);
+    return { ok: false, message: 'রেফার যাচাই করতে সমস্যা হয়েছে, আবার চেষ্টা করুন।' };
   }
 }
 
@@ -337,7 +499,7 @@ export async function updateRealUserInFirestore(
   }
 }
 
-// Load Live Real Leaderboard from Firestore `users` collection
+// Load Live Real Leaderboard from Firestore `users` collection (Top 10 Highest Referrers)
 export async function fetchRealLeaderboard(currentUserId: string): Promise<LeaderboardEntry[]> {
   const db = getFirestoreDb();
   if (!db) return [];
@@ -345,7 +507,7 @@ export async function fetchRealLeaderboard(currentUserId: string): Promise<Leade
   const prizeDistribution = [7000, 4500, 3000, 2200, 1800, 1500, 1200, 1000, 900, 800];
 
   try {
-    const snap = await db.collection('users').orderBy('referralCount', 'desc').limit(15).get();
+    const snap = await db.collection('users').orderBy('referralCount', 'desc').limit(10).get();
     if (snap.empty) return [];
 
     const rows: LeaderboardEntry[] = [];
@@ -353,15 +515,14 @@ export async function fetchRealLeaderboard(currentUserId: string): Promise<Leade
     snap.forEach((doc: any) => {
       const d = doc.data() || {};
       const fullName = [d.firstName, d.lastName].filter(Boolean).join(' ') || d.username || 'User';
-      const masked =
-        fullName.length > 3 ? fullName.slice(0, 3) + '***' : fullName + '***';
+      const masked = fullName.length > 3 ? fullName.slice(0, 3) + '***' : fullName + '***';
       rows.push({
         id: doc.id,
         rank,
         maskedName: doc.id === currentUserId ? `${fullName} (আপনি)` : masked,
         userTag: `ইউজার #${String(doc.id).slice(-4)}`,
         referrals: Number(d.referralCount || 0),
-        completedDays: Number(d.completedGiveawayDays || (d.todayAdsWatched >= 20 ? 1 : 0)),
+        completedDays: Number(d.completedGiveawayDays || (d.todayAdsWatched >= 10 ? 1 : 0)),
         prizeAmount: prizeDistribution[rank - 1] || 500,
         isCurrentUser: doc.id === currentUserId,
       });

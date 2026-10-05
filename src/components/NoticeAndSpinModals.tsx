@@ -1,26 +1,19 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Bell, CheckCircle2, Flame, Gift, ShieldAlert, Sparkles, X } from 'lucide-react';
 import { AppConfig, UserProfile } from '../types';
 
 interface NoticeModalProps {
   isOpen: boolean;
-  isDark: boolean;
   config: AppConfig;
   onClose: () => void;
 }
 
-export const NoticeModal: React.FC<NoticeModalProps> = ({ isOpen, isDark, config, onClose }) => {
+export const NoticeModal: React.FC<NoticeModalProps> = ({ isOpen, config, onClose }) => {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#180a29]/65 backdrop-blur-lg p-5 animate-fadeIn">
-      <div
-        className={`w-full max-w-sm rounded-3xl p-6 border-2 max-h-[85vh] overflow-y-auto glass-reflect ${
-          isDark
-            ? 'bg-gradient-to-br from-[#281344] via-[#1c0d32] to-[#29112d] border-amber-400/45 text-amber-50 shadow-[0_20px_60px_rgba(245,158,11,0.22)]'
-            : 'bg-gradient-to-br from-amber-50 via-white to-rose-50 border-amber-500/45 text-[#1c1026] shadow-2xl'
-        }`}
-      >
+      <div className="w-full max-w-sm rounded-3xl p-6 border-2 max-h-[85vh] overflow-y-auto glass-reflect bg-gradient-to-br from-[#281344] via-[#1c0d32] to-[#29112d] border-amber-400/45 text-amber-50 shadow-[0_20px_60px_rgba(245,158,11,0.22)]">
         <div className="flex items-center justify-between gap-3 pb-4 border-b border-amber-500/20">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-rose-600 flex items-center justify-center text-white shrink-0 shadow-md">
@@ -43,21 +36,33 @@ export const NoticeModal: React.FC<NoticeModalProps> = ({ isOpen, isDark, config
 
         <div className="my-4 space-y-3.5 text-xs leading-relaxed">
           <p className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25">
-            👋 <b className="text-amber-400">{config.siteName}</b>-এ স্বাগতম! নিয়ম মেনে প্রতিদিন কাজ করুন, ১০০% পেমেন্ট নিশ্চিত।
+            👋 <b className="text-amber-400">{config.siteName}</b>-এ স্বাগতম! নিয়ম মেনে কাজ করুন, ১০০% পেমেন্ট নিশ্চিত।
           </p>
 
           <div className="space-y-1.5 px-1">
             <div className="font-bold text-amber-400">আয়ের রেটসমূহ:</div>
-            <div>• <b>বিজ্ঞাপন ভিউ:</b> প্রতি বিজ্ঞাপনে <b className="text-amber-400">৳{config.adReward} টাকা</b></div>
-            <div>• <b>রেফারেল বোনাস:</b> প্রতি রেফারে <b className="text-amber-400">৳{config.referralBonus} টাকা</b></div>
-            <div>• <b>ওয়েলকাম বোনাস:</b> একাউন্ট খুললেই <b className="text-amber-400">৳{config.welcomeBonus} টাকা</b></div>
-            <div>• <b>দৈনিক লিমিট:</b> প্রতিদিন সর্বোচ্চ <b className="text-amber-400">{config.dailyAdLimit}টি অ্যাড</b></div>
+            <div>
+              • <b>বিজ্ঞাপন ভিউ:</b> প্রতি বিজ্ঞাপনে <b className="text-amber-400">৳{config.adReward} টাকা</b>
+            </div>
+            <div>
+              • <b>অ্যাড স্লট:</b> প্রতি <b className="text-amber-400">{config.adBatchCooldownHours} ঘণ্টা পর পর {config.adsPerBatchLimit}টি অ্যাড</b>
+            </div>
+            <div>
+              • <b>রেফারেল বোনাস:</b> প্রতি রেফারে <b className="text-amber-400">৳{config.referralBonus} টাকা</b>
+            </div>
+            <div>
+              • <b>অফিশিয়াল চ্যানেল বোনাস:</b> <b className="text-amber-400">৳{config.officialChannelReward} টাকা</b>
+            </div>
           </div>
 
           <div className="space-y-1.5 px-1">
             <div className="font-bold text-amber-400">উত্তোলন (Withdraw) নিয়ম:</div>
-            <div>• <b>ন্যূনতম উত্তোলন:</b> <b className="text-amber-400">৳{config.minWithdraw.toLocaleString('en-US')} টাকা</b></div>
-            <div>• <b>প্রয়োজনীয় রেফার:</b> কমপক্ষে <b className="text-amber-400">{config.requiredReferralsForWithdraw} জন</b></div>
+            <div>
+              • <b>ন্যূনতম উত্তোলন:</b> <b className="text-amber-400">৳{config.minWithdraw.toLocaleString('en-US')} টাকা</b>
+            </div>
+            <div>
+              • <b>প্রয়োজনীয় রেফার:</b> কমপক্ষে <b className="text-amber-400">{config.requiredReferralsForWithdraw} জন</b>
+            </div>
             <div>• <b>মাধ্যম:</b> bKash · Nagad · Rocket · Binance</div>
           </div>
 
@@ -81,7 +86,6 @@ export const NoticeModal: React.FC<NoticeModalProps> = ({ isOpen, isDark, config
 
 interface BonusAndPromoModalProps {
   isOpen: boolean;
-  isDark: boolean;
   user: UserProfile;
   onClaimStreak: (amount: number) => void;
   onRedeemPromo: (code: string) => void;
@@ -90,13 +94,12 @@ interface BonusAndPromoModalProps {
 
 export const BonusAndPromoModal: React.FC<BonusAndPromoModalProps> = ({
   isOpen,
-  isDark,
   user,
   onClaimStreak,
   onRedeemPromo,
   onClose,
 }) => {
-  const [promoInput, setPromoInput] = useState('');
+  const [promoInput, setPromoInput] = React.useState('');
 
   if (!isOpen) return null;
 
@@ -105,13 +108,7 @@ export const BonusAndPromoModal: React.FC<BonusAndPromoModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#180a29]/65 backdrop-blur-lg p-5 animate-fadeIn">
-      <div
-        className={`w-full max-w-sm rounded-3xl p-6 border-2 glass-reflect ${
-          isDark
-            ? 'bg-gradient-to-br from-[#281344] via-[#1c0d32] to-[#29112d] border-amber-400/45 text-amber-50 shadow-[0_20px_60px_rgba(245,158,11,0.22)]'
-            : 'bg-gradient-to-br from-amber-50 via-white to-rose-50 border-amber-500/45 text-[#1c1026] shadow-2xl'
-        }`}
-      >
+      <div className="w-full max-w-sm rounded-3xl p-6 border-2 glass-reflect bg-gradient-to-br from-[#281344] via-[#1c0d32] to-[#29112d] border-amber-400/45 text-amber-50 shadow-[0_20px_60px_rgba(245,158,11,0.22)]">
         <div className="flex items-center justify-between gap-3 pb-4 border-b border-amber-500/20">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center text-white shrink-0 shadow-md">
@@ -173,19 +170,15 @@ export const BonusAndPromoModal: React.FC<BonusAndPromoModalProps> = ({
             <span>অফিশিয়াল প্রোমো কোড</span>
           </div>
           <p className="text-[11px] opacity-80 mb-3">
-            অফিশিয়াল চ্যানেলে পাওয়া গিফট কোড নিচে বসিয়ে ক্লেইম করুন।
+            অফিশিয়াল চ্যানেল (@jmjads) থেকে পাওয়া প্রোমো কোড নিচে বসিয়ে বোনাস নিন।
           </p>
           <div className="flex gap-2">
             <input
               type="text"
               value={promoInput}
               onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
-              placeholder="কোড লিখুন..."
-              className={`flex-1 min-w-0 rounded-xl px-3.5 py-2.5 text-xs font-mono-num font-bold outline-none border ${
-                isDark
-                  ? 'bg-[#170b28] border-amber-500/35 text-amber-50'
-                  : 'bg-white border-amber-500/40 text-[#1c1026]'
-              }`}
+              placeholder="প্রোমো কোড লিখুন..."
+              className="flex-1 min-w-0 rounded-xl px-3.5 py-2.5 text-xs font-mono-num font-bold outline-none border bg-[#170b28] border-amber-500/35 text-amber-50"
             />
             <button
               type="button"
